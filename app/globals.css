@@ -1,382 +1,43 @@
-:root {
-  --foreground-rgb: 0, 0, 0;
-  --background-rgb: 255, 255, 255;
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
 }
 
-  body {
-    color: rgb(var(--foreground-rgb));
-    background: rgb(var(--background-rgb));
-  }
+body {
+  background: #000;
+  color: #e5e5e5;
+}
 
-  * {
-    box-sizing: border-box;
-    padding: 0;
-    margin: 0;
-  }
+input, select, button {
+  font-family: inherit;
+}
 
-  .login-container {
-    min-height: 100vh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  }
+input::placeholder {
+  color: #666;
+}
 
-  .login-box {
-    background: white;
-    padding: 2rem;
-    border-radius: 12px;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-    width: 100%;
-    max-width: 400px;
-  }
+a {
+  color: #6366f1;
+}
 
-  .login-box h1 {
-    text-align: center;
-    margin-bottom: 1.5rem;
-    color: #333;
-  }
+input[type="range"] {
+  -webkit-appearance: none;
+  background: #333;
+  height: 6px;
+  border-radius: 3px;
+}
 
-  .login-box input {
-    width: 100%;
-    padding: 12px;
-    margin-bottom: 1rem;
-    border: 1px solid #ddd;
-    border-radius: 8px;
-    font-size: 16px;
-  }
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  background: #6366f1;
+  border-radius: 50%;
+  cursor: pointer;
+}
 
-  .login-box button {
-    width: 100%;
-    padding: 12px;
-    background: #667eea;
-    color: white;
-    border: none;
-    border-radius: 8px;
-    font-size: 16px;
-    cursor: pointer;
-    font-weight: 600;
-  }
-
-  .login-box button:hover {
-    background: #5568d3;
-  }
-
-  .login-box .signup-link {
-    text-align: center;
-    margin-top: 1rem;
-    color: #666;
-  }
-
-  .login-box .signup-link a {
-    color: #667eea;
-    text-decoration: none;
-  }
-
-  .error {
-    color: red;
-    font-size: 14px;
-    margin-bottom: 1rem;
-    text-align: center;
-  }
-
-  /* Dashboard styles */
-  .dashboard {
-    min-height: 100vh;
-    background: #f5f7fa;
-  }
-
-  .dashboard-header {
-    background: white;
-    padding: 1rem 2rem;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-
-  .dashboard-header h1 {
-    font-size: 1.5rem;
-    color: #333;
-  }
-
-  .dashboard-header .user-info {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-  }
-
-  .dashboard-header .logout-btn {
-    padding: 8px 16px;
-    background: #ff4757;
-    color: white;
-    border: none;
-    border-radius: 6px;
-    cursor: pointer;
-  }
-
-  .dashboard-content {
-    padding: 2rem;
-  }
-
-  .stats-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 1rem;
-    margin-bottom: 2rem;
-  }
-
-  .stat-card {
-    background: white;
-    padding: 1.5rem;
-    border-radius: 12px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-  }
-
-  .stat-card h3 {
-    font-size: 2rem;
-    color: #667eea;
-    margin-bottom: 0.5rem;
-  }
-
-  .stat-card p {
-    color: #666;
-  }
-
-  .section {
-    background: white;
-    padding: 1.5rem;
-    border-radius: 12px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    margin-bottom: 2rem;
-  }
-
-  .section h2 {
-    margin-bottom: 1rem;
-    color: #333;
-  }
-
-  .task-form {
-    display: flex;
-    gap: 1rem;
-    margin-bottom: 1rem;
-  }
-
-  .task-form input, .task-form select {
-    padding: 10px;
-    border: 1px solid #ddd;
-    border-radius: 6px;
-    flex: 1;
-  }
-
-  .task-form button {
-    padding: 10px 20px;
-    background: #667eea;
-    color: white;
-    border: none;
-    border-radius: 6px;
-    cursor: pointer;
-  }
-
-  .task-list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-
-  .task-item {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    padding: 12px;
-    background: #f8f9fa;
-    border-radius: 8px;
-  }
-
-  .task-item.completed {
-    opacity: 0.6;
-  }
-
-  .task-item.completed .task-title {
-    text-decoration: line-through;
-  }
-
-  .task-checkbox {
-    width: 20px;
-    height: 20px;
-  }
-
-  .task-title {
-    flex: 1;
-  }
-
-  .task-priority {
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 12px;
-    font-weight: 600;
-  }
-
-  .task-priority.high {
-    background: #ffe5e5;
-    color: #ff4757;
-  }
-
-  .task-priority.medium {
-    background: #fff3cd;
-    color: #ffc107;
-  }
-
-  .task-priority.low {
-    background: #d4edda;
-    color: #28a745;
-  }
-
-  .task-assignee {
-    font-size: 12px;
-    color: #666;
-  }
-
-  .task-delete {
-    padding: 4px 8px;
-    background: #ff4757;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 12px;
-  }
-
-  .milestone-list {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 1rem;
-  }
-
-  .milestone-card {
-    padding: 1.5rem;
-    background: #f8f9fa;
-    border-radius: 8px;
-    border-left: 4px solid #667eea;
-  }
-
-  .milestone-card.completed {
-    border-left-color: #28a745;
-  }
-
-  .milestone-card h3 {
-    margin-bottom: 0.5rem;
-  }
-
-  .milestone-progress {
-    height: 8px;
-    background: #ddd;
-    border-radius: 4px;
-    margin: 1rem 0;
-    overflow: hidden;
-  }
-
-  .milestone-progress-bar {
-    height: 100%;
-    background: #667eea;
-    transition: width 0.3s;
-  }
-
-  .milestone-progress-bar.completed {
-    background: #28a745;
-  }
-
-  .milestone-meta {
-    display: flex;
-    justify-content: space-between;
-    font-size: 12px;
-    color: #666;
-  }
-
-  .files-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: 1rem;
-  }
-
-  .file-card {
-    padding: 1rem;
-    background: #f8f9fa;
-    border-radius: 8px;
-    text-align: center;
-  }
-
-  .file-card a {
-    color: #667eea;
-    text-decoration: none;
-  }
-
-  .upload-form {
-    display: flex;
-    gap: 1rem;
-    margin-bottom: 1rem;
-  }
-
-  .upload-form input[type="file"] {
-    flex: 1;
-  }
-
-  .upload-form button {
-    padding: 10px 20px;
-    background: #667eea;
-    color: white;
-    border: none;
-    border-radius: 6px;
-    cursor: pointer;
-  }
-
-  .invite-form {
-    display: flex;
-    gap: 1rem;
-    margin-bottom: 1rem;
-  }
-
-  .invite-form input {
-    flex: 1;
-    padding: 10px;
-    border: 1px solid #ddd;
-    border-radius: 6px;
-  }
-
-  .invite-form button {
-    padding: 10px 20px;
-    background: #28a745;
-    color: white;
-    border: none;
-    border-radius: 6px;
-    cursor: pointer;
-  }
-
-  .tabs {
-    display: flex;
-    gap: 1rem;
-    margin-bottom: 1rem;
-    border-bottom: 2px solid #eee;
-  }
-
-  .tab {
-    padding: 10px 20px;
-    background: none;
-    border: none;
-    cursor: pointer;
-    font-size: 14px;
-    color: #666;
-    border-bottom: 2px solid transparent;
-    margin-bottom: -2px;
-  }
-
-  .tab.active {
-    color: #667eea;
-    border-bottom-color: #667eea;
-  }
-
-  .loading {
-    text-align: center;
-    padding: 2rem;
-    color: #666;
-  }
+select option {
+  background: #111;
+  color: #fff;
+}
