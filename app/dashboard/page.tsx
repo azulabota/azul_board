@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { useRouter } from 'next/navigation'
 
 interface Milestone { id: number; title: string; description: string }
-interface Task { id: number; milestone_id: number; title: string; status: string; priority: string; assignee: string }
+interface Task { id: number; milestone_id: number; title: string; status: string; priority: string; assignee: string; description: string; created_by: string }
 interface File { id: number; milestone_id: number; name: string; url: string; link: string }
 interface Revision { id: number; milestone_id: number; title: string; code_snippet: string; file_name: string; github_url: string; description: string; priority: string; status: string; assignee: string; created_by: string }
 
@@ -16,18 +16,26 @@ export default function Dashboard() {
   const [selectedMilestone, setSelectedMilestone] = useState<number | null>(null)
   const [activeView, setActiveView] = useState<'dashboard' | 'files' | 'revisions'>('dashboard')
   
-  // Data
   const [tasks, setTasks] = useState<Task[]>([])
   const [files, setFiles] = useState<File[]>([])
   const [revisions, setRevisions] = useState<Revision[]>([])
   
-  // Forms
   const [newMilestone, setNewMilestone] = useState('')
   const [editingMilestone, setEditingMilestone] = useState<number | null>(null)
   const [editMilestoneTitle, setEditMilestoneTitle] = useState('')
-  const [newTask, setNewTask] = useState('')
-  const [taskPriority, setTaskPriority] = useState('medium')
-  const [taskAssignee, setTaskAssignee] = useState('')
+  
+  // Task form per column
+  const [newTask, setNewTask] = useState({ todo: '', in_progress: '', needs_review: '', done: '' })
+  const [newTaskDesc, setNewTaskDesc] = useState({ todo: '', in_progress: '', needs_review: '', done: '' })
+  const [newTaskAssignee, setNewTaskAssignee] = useState({ todo: '', in_progress: '', needs_review: '', done: '' })
+  const [newTaskPriority, setNewTaskPriority] = useState({ todo: 'medium', in_progress: 'medium', needs_review: 'medium', done: 'medium' })
+  
+  // Expanded task
+  const [expandedTask, setExpandedTask] = useState<number | null>(null)
+  const [editingTask, setEditingTask] = useState<number | null>(null)
+  const [editTaskTitle, setEditTaskTitle] = useState('')
+  const [editTaskDesc, setEditTaskDesc] = useState('')
+  
   const [newFileName, setNewFileName] = useState('')
   const [newFileUrl, setNewFileUrl] = useState('')
   const [newRevision, setNewRevision] = useState({ title: '', description: '', github_url: '', file_name: '', priority: 'medium', assignee: '' })
@@ -84,11 +92,23 @@ export default function Dashboard() {
   }
 
   // Tasks
-  const addTask = async () => {
-    if (!newTask.trim() || !selectedMilestone) return
-    const { data } = await supabase.from('tasks').insert([{ milestone_id: selectedMilestone, title: newTask, status: 'todo', priority: taskPriority, assignee: taskAssignee || 'Unassigned' }]).select()
+  const addTask = async (status: string) => {
+    const title = newTask[status as keyof typeof newTask]
+    if (!title.trim() || !selectedMilestone) return
+    
+    const { data } = await supabase.from('tasks').insert([{ 
+      milestone_id: selectedMilestone, 
+      title, 
+      status, 
+      description: newTaskDesc[status as keyof typeof newTaskDesc],
+      priority: newTaskPriority[status as keyof typeof newTaskPriority],
+      assignee: newTaskAssignee[status as keyof typeof newTaskAssignee] || 'Unassigned',
+      created_by: user?.email
+    }]).select()
+    
     if (data) setTasks([...tasks, data[0]])
-    setNewTask('')
+    setNewTask({ ...newTask, [status]: '' })
+    setNewTaskDesc({ ...newTaskDesc, [status]: '' })
   }
 
   const handleDragStart = (taskId: number) => setDraggedTask(taskId)
@@ -104,6 +124,14 @@ export default function Dashboard() {
   const deleteTask = async (id: number) => {
     await supabase.from('tasks').delete().eq('id', id)
     setTasks(tasks.filter(t => t.id !== id))
+  }
+
+  const canEditTask = (task: Task) => task.created_by === user?.email
+
+  const saveTaskEdit = async (id: number) => {
+    await supabase.from('tasks').update({ title: editTaskTitle, description: editTaskDesc }).eq('id', id)
+    setTasks(tasks.map(t => t.id === id ? { ...t, title: editTaskTitle, description: editTaskDesc } : t))
+    setEditingTask(null)
   }
 
   // Files
@@ -152,15 +180,15 @@ export default function Dashboard() {
     
     if (data) {
       setRevisions([data[0], ...revisions])
-      // Also add to tasks
       await supabase.from('tasks').insert([{
         milestone_id: selectedMilestone,
         title: `Rev: ${data[0].title}`,
         status: 'todo',
         priority: newRevision.priority,
-        assignee: newRevision.assignee || 'Unassigned'
+        assignee: newRevision.assignee || 'Unassigned',
+        created_by: user?.email
       }])
-      setTasks([...tasks, { id: Date.now(), milestone_id: selectedMilestone, title: `Rev: ${newRevision.title}`, status: 'todo', priority: newRevision.priority, assignee: newRevision.assignee || 'Unassigned' }])
+      setTasks([...tasks, { id: Date.now(), milestone_id: selectedMilestone, title: `Rev: ${newRevision.title}`, status: 'todo', priority: newRevision.priority, assignee: newRevision.assignee || 'Unassigned', description: '', created_by: user?.email }])
     }
     setNewRevision({ title: '', description: '', github_url: '', file_name: '', priority: 'medium', assignee: '' })
   }
@@ -175,12 +203,110 @@ export default function Dashboard() {
     setRevisions(revisions.filter(r => r.id !== id))
   }
 
-  // Filtered data
   const milestoneTasks = tasks.filter(t => t.milestone_id === selectedMilestone)
   const milestoneFiles = files.filter(f => f.milestone_id === selectedMilestone)
   const milestoneRevisions = revisions.filter(r => r.milestone_id === selectedMilestone)
 
   const getTasksByStatus = (status: string) => milestoneTasks.filter(t => t.status === status)
+
+  const renderTaskForm = (status: string, label: string) => (
+    <div style={{marginBottom:'1rem', padding:'0.75rem', background:'#1a1a1a', borderRadius:'8px'}}>
+      <input 
+        type="text" 
+        placeholder={`Add ${label}...`} 
+        value={newTask[status as keyof typeof newTask]} 
+        onChange={e => setNewTask({ ...newTask, [status]: e.target.value })} 
+        onKeyDown={e => e.key === 'Enter' && addTask(status)}
+        style={{width:'100%', padding:'8px', background:'#111', border:'1px solid #333', borderRadius:'4px', color:'#fff', fontSize:'13px', marginBottom:'0.5rem'}}
+      />
+      <textarea 
+        placeholder="Description (optional)"
+        value={newTaskDesc[status as keyof typeof newTaskDesc]}
+        onChange={e => setNewTaskDesc({ ...newTaskDesc, [status]: e.target.value })}
+        style={{width:'100%', padding:'8px', background:'#111', border:'1px solid #333', borderRadius:'4px', color:'#fff', fontSize:'12px', marginBottom:'0.5rem', minHeight:'40px'}}
+      />
+      <div style={{display:'flex', gap:'0.5rem'}}>
+        <select 
+          value={newTaskPriority[status as keyof typeof newTaskPriority]}
+          onChange={e => setNewTaskPriority({ ...newTaskPriority, [status]: e.target.value })}
+          style={{padding:'6px', background:'#111', border:'1px solid #333', borderRadius:'4px', color:'#fff', fontSize:'12px'}}
+        >
+          <option value="low">Low</option>
+          <option value="medium">Medium</option>
+          <option value="high">High</option>
+        </select>
+        <input 
+          type="text" 
+          placeholder="Assign to..." 
+          value={newTaskAssignee[status as keyof typeof newTaskAssignee]}
+          onChange={e => setNewTaskAssignee({ ...newTaskAssignee, [status]: e.target.value })}
+          style={{flex:1, padding:'6px', background:'#111', border:'1px solid #333', borderRadius:'4px', color:'#fff', fontSize:'12px'}}
+        />
+        <button onClick={() => addTask(status)} style={{padding:'6px 12px', background:'#6366f1', color:'#fff', border:'none', borderRadius:'4px', cursor:'pointer', fontSize:'12px'}}>Add</button>
+      </div>
+    </div>
+  )
+
+  const renderTaskCard = (task: Task) => {
+    const isExpanded = expandedTask === task.id
+    const isEditing = editingTask === task.id
+    const isCreator = canEditTask(task)
+    
+    return (
+      <div 
+        key={task.id} 
+        draggable 
+        onDragStart={() => handleDragStart(task.id)}
+        onClick={() => !isEditing && setExpandedTask(isExpanded ? null : task.id)}
+        style={{
+          background: '#111', 
+          padding: isExpanded ? '1rem' : '0.75rem', 
+          borderRadius: '6px', 
+          border: '1px solid #333', 
+          cursor: 'grab', 
+          marginBottom: '0.5rem',
+          transition: 'all 0.2s'
+        }}
+      >
+        {isEditing ? (
+          <div onClick={e => e.stopPropagation()}>
+            <input 
+              value={editTaskTitle} 
+              onChange={e => setEditTaskTitle(e.target.value)}
+              style={{width:'100%', padding:'6px', background:'#000', border:'1px solid #444', borderRadius:'4px', color:'#fff', fontSize:'13px', marginBottom:'0.5rem'}}
+            />
+            <textarea 
+              value={editTaskDesc}
+              onChange={e => setEditTaskDesc(e.target.value)}
+              style={{width:'100%', padding:'6px', background:'#000', border:'1px solid #444', borderRadius:'4px', color:'#fff', fontSize:'12px', marginBottom:'0.5rem', minHeight:'60px'}}
+            />
+            <div style={{display:'flex', gap:'0.5rem'}}>
+              <button onClick={() => saveTaskEdit(task.id)} style={{padding:'4px 8px', background:'#10b981', color:'#fff', border:'none', borderRadius:'4px', cursor:'pointer', fontSize:'12px'}}>Save</button>
+              <button onClick={() => setEditingTask(null)} style={{padding:'4px 8px', background:'#666', color:'#fff', border:'none', borderRadius:'4px', cursor:'pointer', fontSize:'12px'}}>Cancel</button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div style={{display:'flex', alignItems:'center', gap:'0.5rem', marginBottom: isExpanded ? '0.5rem' : '0.25rem'}}>
+              <span style={{width:'6px',height:'6px',borderRadius:'50%',background:PRIORITY_COLORS[task.priority]}} />
+              <span style={{fontSize:'0.7rem',color:'#666',textTransform:'uppercase', flex:1}}>{task.priority}</span>
+              {isCreator && <button onClick={(e) => { e.stopPropagation(); setEditingTask(task.id); setEditTaskTitle(task.title); setEditTaskDesc(task.description || '') }} style={{background:'transparent',border:'none',color:'#666',cursor:'pointer',fontSize:'12px'}}>✏️</button>}
+              <button onClick={(e) => { e.stopPropagation(); deleteTask(task.id) }} style={{background:'transparent',border:'none',color:'#666',cursor:'pointer',fontSize:'12px'}}>✕</button>
+            </div>
+            <div style={{fontWeight:'500',fontSize:'0.875rem', marginBottom: isExpanded ? '0.5rem' : '0'}}>{task.title}</div>
+            {isExpanded && task.description && (
+              <div style={{fontSize:'0.8rem',color:'#888',marginTop:'0.5rem',padding:'0.5rem',background:'#0a0a0a',borderRadius:'4px'}}>{task.description}</div>
+            )}
+            {isExpanded && (
+              <div style={{fontSize:'0.75rem',color:'#666',marginTop:'0.5rem'}}>
+                👤 {task.created_by} → {task.assignee}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    )
+  }
 
   const s: Record<string, React.CSSProperties> = {
     container: { background: '#000', color: '#e5e5e5', minHeight: '100vh', display: 'flex' },
@@ -196,32 +322,27 @@ export default function Dashboard() {
     viewTabs: { display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' },
     viewTab: { padding: '8px 16px', background: 'transparent', color: '#888', border: 'none', cursor: 'pointer', borderRadius: '6px' },
     viewTabActive: { background: '#333', color: '#fff' },
-    taskForm: { display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' },
-    input: { flex: 1, padding: '10px', background: '#111', border: '1px solid #333', borderRadius: '6px', color: '#fff', fontSize: '14px', minWidth: '120px' },
     board: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem' },
-    column: { background: '#0a0a0a', borderRadius: '12px', padding: '1rem', minHeight: '300px', border: '1px solid #222' },
-    columnHeader: { display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', paddingBottom: '0.75rem', borderBottom: '1px solid #222' },
+    column: { background: '#0a0a0a', borderRadius: '12px', padding: '1rem', minHeight: '300px', border: '1px solid #222', display: 'flex', flexDirection: 'column' },
+    columnHeader: { display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', paddingBottom: '0.75rem', borderBottom: '1px solid #222', justifyContent: 'space-between' },
     columnDot: { width: '8px', height: '8px', borderRadius: '50%' },
     columnTitle: { fontWeight: '600', fontSize: '0.875rem' },
-    columnCount: { marginLeft: 'auto', background: '#222', padding: '2px 8px', borderRadius: '4px', fontSize: '12px', color: '#888' },
-    taskCard: { background: '#111', padding: '0.75rem', borderRadius: '6px', border: '1px solid #333', cursor: 'grab', marginBottom: '0.5rem' },
-    taskTitle: { fontWeight: '500', fontSize: '0.875rem', marginBottom: '0.25rem' },
-    taskMeta: { fontSize: '0.75rem', color: '#666' },
-    deleteBtn: { background: 'transparent', border: 'none', color: '#666', cursor: 'pointer', fontSize: '12px', marginLeft: 'auto' },
+    columnCount: { background: '#222', padding: '2px 8px', borderRadius: '4px', fontSize: '12px', color: '#888' },
+    addTaskBtn: { width: '24px', height: '24px', background: '#333', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center' },
     filesGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1rem' },
     fileCard: { background: '#111', padding: '1rem', borderRadius: '8px', border: '1px solid #333', textAlign: 'center' },
     revContainer: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '1rem' },
     revPanel: { background: '#111', borderRadius: '12px', padding: '1rem', border: '1px solid #333', maxHeight: '600px', overflow: 'auto' },
     revCard: { background: '#0a0a0a', padding: '1rem', borderRadius: '8px', border: '1px solid', borderLeftWidth: '4px', marginBottom: '0.75rem' },
     emptyText: { color: '#666', textAlign: 'center', padding: '2rem', fontSize: '0.875rem' },
-    panelTitle: { fontWeight: '600', marginBottom: '1rem' }
+    panelTitle: { fontWeight: '600', marginBottom: '1rem' },
+    input: { flex: 1, padding: '10px', background: '#111', border: '1px solid #333', borderRadius: '6px', color: '#fff', fontSize: '14px', minWidth: '120px' }
   }
 
   if (loading) return <div style={{background:'#000',color:'#fff',minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center'}}>Loading...</div>
 
   return (
     <div style={s.container}>
-      {/* Sidebar - Milestones */}
       <div style={s.sidebar}>
         <h1 style={s.logo}>Sapien Eleven</h1>
         
@@ -233,7 +354,7 @@ export default function Dashboard() {
             ) : (
               <span onDoubleClick={() => { setEditingMilestone(m.id); setEditMilestoneTitle(m.title) }}>{m.title}</span>
             )}
-            <button onClick={(e) => { e.stopPropagation(); deleteMilestone(m.id) }} style={{...s.deleteBtn, marginLeft: 'auto'}}>✕</button>
+            <button onClick={(e) => { e.stopPropagation(); deleteMilestone(m.id) }} style={{background:'transparent',border:'none',color:'#666',cursor:'pointer',fontSize:'12px',marginLeft:'auto'}}>✕</button>
           </div>
         ))}
         
@@ -243,63 +364,44 @@ export default function Dashboard() {
         <button onClick={handleLogout} style={s.logoutBtn}>Logout</button>
       </div>
 
-      {/* Main Content */}
       <div style={s.main}>
         <h2 style={{marginBottom:'1.5rem'}}>{milestones.find(m => m.id === selectedMilestone)?.title || 'Select a milestone'}</h2>
         
-        {/* View Tabs */}
         <div style={s.viewTabs}>
           <button onClick={() => setActiveView('dashboard')} style={activeView === 'dashboard' ? {...s.viewTab, ...s.viewTabActive} : s.viewTab}>Dashboard</button>
           <button onClick={() => setActiveView('files')} style={activeView === 'files' ? {...s.viewTab, ...s.viewTabActive} : s.viewTab}>Files</button>
           <button onClick={() => setActiveView('revisions')} style={activeView === 'revisions' ? {...s.viewTab, ...s.viewTabActive} : s.viewTab}>Revisions</button>
         </div>
 
-        {/* Dashboard View */}
         {activeView === 'dashboard' && (
-          <div>
-            <div style={s.taskForm}>
-              <input type="text" placeholder="Add task..." value={newTask} onChange={e => setNewTask(e.target.value)} onKeyDown={e => e.key === 'Enter' && addTask()} style={s.input} />
-              <select value={taskPriority} onChange={e => setTaskPriority(e.target.value)} style={s.input}>
-                <option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option>
-              </select>
-              <input type="text" placeholder="Assignee" value={taskAssignee} onChange={e => setTaskAssignee(e.target.value)} style={{...s.input, width: '100px'}} />
-              <button onClick={addTask} style={s.addBtn}>Add</button>
-            </div>
-            
-            <div style={s.board}>
-              {[
-                { id: 'todo', title: 'To Do', color: '#6366f1' },
-                { id: 'in_progress', title: 'In Progress', color: '#f59e0b' },
-                { id: 'needs_review', title: 'Needs Reviewed', color: '#8b5cf6' },
-                { id: 'done', title: 'Completed', color: '#10b981' }
-              ].map(col => (
-                <div key={col.id} onDragOver={handleDragOver} onDrop={() => handleTaskDrop(col.id)} style={s.column}>
-                  <div style={s.columnHeader}>
+          <div style={s.board}>
+            {[
+              { id: 'todo', title: 'To Do', color: '#6366f1' },
+              { id: 'in_progress', title: 'In Progress', color: '#f59e0b' },
+              { id: 'needs_review', title: 'Needs Reviewed', color: '#8b5cf6' },
+              { id: 'done', title: 'Completed', color: '#10b981' }
+            ].map(col => (
+              <div key={col.id} onDragOver={handleDragOver} onDrop={() => handleTaskDrop(col.id)} style={s.column}>
+                <div style={s.columnHeader}>
+                  <div style={{display:'flex',alignItems:'center',gap:'0.5rem'}}>
                     <div style={{...s.columnDot, background: col.color}} />
                     <span style={s.columnTitle}>{col.title}</span>
                     <span style={s.columnCount}>{getTasksByStatus(col.id).length}</span>
                   </div>
-                  {getTasksByStatus(col.id).map(task => (
-                    <div key={task.id} draggable onDragStart={() => handleDragStart(task.id)} style={s.taskCard}>
-                      <div style={{display:'flex', alignItems:'center', gap:'0.5rem', marginBottom:'0.5rem'}}>
-                        <span style={{width:'6px',height:'6px',borderRadius:'50%',background:PRIORITY_COLORS[task.priority]}} />
-                        <span style={{fontSize:'0.7rem',color:'#666',textTransform:'uppercase'}}>{task.priority}</span>
-                        <button onClick={() => deleteTask(task.id)} style={s.deleteBtn}>✕</button>
-                      </div>
-                      <div style={s.taskTitle}>{task.title}</div>
-                      <div style={s.taskMeta}>→ {task.assignee}</div>
-                    </div>
-                  ))}
+                  <button onClick={() => document.getElementById(`add-${col.id}`)?.scrollIntoView({behavior:'smooth'})} style={s.addTaskBtn}>+</button>
                 </div>
-              ))}
-            </div>
+                <div id={`add-${col.id}`}>{renderTaskForm(col.id, col.title)}</div>
+                <div style={{flex:1, overflow:'auto'}}>
+                  {getTasksByStatus(col.id).map(task => renderTaskCard(task))}
+                </div>
+              </div>
+            ))}
           </div>
         )}
 
-        {/* Files View */}
         {activeView === 'files' && (
           <div>
-            <div style={{...s.taskForm, marginBottom:'1.5rem'}}>
+            <div style={{display:'flex', gap:'0.5rem', marginBottom:'1.5rem', flexWrap:'wrap'}}>
               <input type="text" placeholder="File name" value={newFileName} onChange={e => setNewFileName(e.target.value)} style={s.input} />
               <input type="text" placeholder="URL (optional)" value={newFileUrl} onChange={e => setNewFileUrl(e.target.value)} style={s.input} />
               <button onClick={addFile} style={s.addBtn}>Add</button>
@@ -319,10 +421,8 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Revisions View - 4 Columns */}
         {activeView === 'revisions' && (
           <div style={s.revContainer}>
-            {/* Column 1: Add Revision */}
             <div style={s.revPanel}>
               <div style={s.panelTitle}>➕ Add Revision</div>
               <div style={{display:'flex',flexDirection:'column',gap:'0.5rem'}}>
@@ -340,7 +440,6 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Column 2: Code */}
             <div style={s.revPanel}>
               <div style={s.panelTitle}>💻 Code</div>
               {milestoneRevisions.map(r => (
@@ -352,13 +451,11 @@ export default function Dashboard() {
               ))}
             </div>
 
-            {/* Column 3: View (placeholder) */}
             <div style={s.revPanel}>
               <div style={s.panelTitle}>👁️ View</div>
               <p style={s.emptyText}>Coming soon...</p>
             </div>
 
-            {/* Column 4: Notes */}
             <div style={s.revPanel}>
               <div style={s.panelTitle}>📝 Notes</div>
               {milestoneRevisions.map(r => (
@@ -366,7 +463,7 @@ export default function Dashboard() {
                   <div style={{display:'flex',alignItems:'center',gap:'0.5rem',marginBottom:'0.5rem'}}>
                     <span style={{padding:'2px 6px',borderRadius:'4px',fontSize:'10px',background:r.status==='done'?'#10b981':r.status==='in_progress'?'#f59e0b':'#6366f1',color:'#fff'}}>{r.status}</span>
                     <span style={{padding:'2px 6px',borderRadius:'4px',fontSize:'10px',background:PRIORITY_COLORS[r.priority],color:'#fff'}}>{r.priority}</span>
-                    <button onClick={() => deleteRevision(r.id)} style={s.deleteBtn}>✕</button>
+                    <button onClick={() => deleteRevision(r.id)} style={{background:'transparent',border:'none',color:'#666',cursor:'pointer',fontSize:'12px',marginLeft:'auto'}}>✕</button>
                   </div>
                   <div style={{fontWeight:'600',marginBottom:'0.25rem'}}>{r.title}</div>
                   {r.description && <div style={{fontSize:'0.875rem',color:'#888',marginBottom:'0.5rem'}}>{r.description}</div>}
