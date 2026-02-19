@@ -130,55 +130,23 @@ export default function Dashboard() {
   }
 
   const fetchGitHubCode = async (url: string) => {
-    // Convert github.com URL to raw.githubusercontent.com
     let rawUrl = url.replace('github.com', 'raw.githubusercontent.com').replace('/blob/', '/')
-    if (!rawUrl.includes('raw.githubusercontent.com')) {
-      alert('Please enter a valid GitHub file URL')
-      return null
-    }
-    try {
-      const res = await fetch(rawUrl)
-      if (!res.ok) throw new Error('Failed to fetch')
-      return await res.text()
-    } catch (err) {
-      alert('Could not fetch code from that URL')
-      return null
-    }
+    if (!rawUrl.includes('raw.githubusercontent.com')) { alert('Please enter a valid GitHub file URL'); return null }
+    try { const res = await fetch(rawUrl); if (!res.ok) throw new Error(); return await res.text() }
+    catch { alert('Could not fetch code from that URL'); return null }
   }
 
   const addCodeNote = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!newCodeNote.title.trim()) return
-    
     let codeSnippet = ''
-    if (newCodeNote.github_url) {
-      codeSnippet = await fetchGitHubCode(newCodeNote.github_url) || '// Could not fetch code'
-    }
-
+    if (newCodeNote.github_url) codeSnippet = await fetchGitHubCode(newCodeNote.github_url) || '// Could not fetch code'
     const { data } = await supabase.from('code_notes').insert([{ 
-      title: newCodeNote.title, 
-      description: newCodeNote.description, 
-      code_snippet: codeSnippet,
-      file_name: newCodeNote.file_name, 
-      github_url: newCodeNote.github_url,
-      expo_snack_id: newCodeNote.expo_snack_id,
-      priority: newCodeNote.priority, 
-      status: 'open', 
-      assignee: newCodeNote.assignee || 'Unassigned', 
-      created_by: user?.email 
+      title: newCodeNote.title, description: newCodeNote.description, code_snippet: codeSnippet, file_name: newCodeNote.file_name, github_url: newCodeNote.github_url, expo_snack_id: newCodeNote.expo_snack_id, priority: newCodeNote.priority, status: 'open', assignee: newCodeNote.assignee || 'Unassigned', created_by: user?.email 
     }]).select()
-
     if (data) {
       setCodeNotes([data[0], ...codeNotes])
-      // Save first version
-      if (codeSnippet) {
-        await supabase.from('code_versions').insert([{
-          code_note_id: data[0].id,
-          code_snippet: codeSnippet,
-          version: 1,
-          created_by: user?.email
-        }])
-      }
+      if (codeSnippet) await supabase.from('code_versions').insert([{ code_note_id: data[0].id, code_snippet: codeSnippet, version: 1, created_by: user?.email }])
     }
     setNewCodeNote({ title: '', description: '', github_url: '', expo_snack_id: '', file_name: '', priority: 'medium', assignee: '' })
   }
@@ -187,25 +155,17 @@ export default function Dashboard() {
     await supabase.from('code_notes').update({ status }).eq('id', id)
     setCodeNotes(codeNotes.map(n => n.id === id ? { ...n, status: status as any } : n))
   }
-
   const saveCodeVersion = async (noteId: number, code: string) => {
     const currentVersions = codeVersions.filter(v => v.code_note_id === noteId)
     const newVersion = currentVersions.length + 1
-    await supabase.from('code_versions').insert([{
-      code_note_id: noteId,
-      code_snippet: code,
-      version: newVersion,
-      created_by: user?.email
-    }])
+    await supabase.from('code_versions').insert([{ code_note_id: noteId, code_snippet: code, version: newVersion, created_by: user?.email }])
     setCodeVersions([...codeVersions, { id: Date.now(), code_note_id: noteId, code_snippet: code, version: newVersion, created_by: user?.email, created_at: new Date().toISOString() }])
   }
-
   const deleteCodeNote = async (id: number) => { 
     await supabase.from('code_versions').delete().eq('code_note_id', id)
     await supabase.from('code_notes').delete().eq('id', id)
     setCodeNotes(codeNotes.filter(n => n.id !== id))
   }
-
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -252,17 +212,19 @@ export default function Dashboard() {
     taskAssignee: { fontSize: '0.75rem', color: '#666' },
     loading: { background: '#000', color: '#fff', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' },
     
-    // Code Review - 4 columns
-    codeContainer: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '1rem', minHeight: '600px' },
+    // Code Review - 3 columns
+    codeContainer: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', minHeight: '600px' },
     codePanel: { background: '#111', borderRadius: '12px', padding: '1rem', border: '1px solid #333', overflow: 'hidden', display: 'flex', flexDirection: 'column' },
     codeForm: { display: 'flex', flexDirection: 'column', gap: '0.75rem' },
     codeBlock: { background: '#0a0a0a', padding: '0.75rem', borderRadius: '6px', fontSize: '12px', overflow: 'auto', maxHeight: '300px', whiteSpace: 'pre', fontFamily: 'monospace' },
     codeNoteCard: { background: '#0a0a0a', padding: '1rem', borderRadius: '8px', border: '1px solid', borderLeftWidth: '4px', marginBottom: '0.75rem', flexShrink: 0 },
     codeTextarea: { background: '#0a0a0a', padding: '0.75rem', borderRadius: '6px', fontSize: '12px', width: '100%', minHeight: '200px', color: '#fff', fontFamily: 'monospace', border: '1px solid #333' },
     panelTitle: { marginBottom: '1rem', fontSize: '1rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.5rem' },
+    versionBtn: { padding: '4px 8px', background: '#f59e0b', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', marginRight: '0.5rem' },
+    saveBtn: { padding: '8px 16px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', marginTop: '0.5rem', marginRight: '0.5rem' },
     
     // Design
-    designContainer: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' },
+    designContainer: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' },
     designPanel: { background: '#111', borderRadius: '12px', padding: '1rem', border: '1px solid #333' },
     sectionTitle: { marginBottom: '1rem', fontSize: '1rem', fontWeight: '600' },
     figmaEmbed: { width: '100%', height: '400px', border: 'none', borderRadius: '8px', overflow: 'hidden' },
@@ -293,9 +255,7 @@ export default function Dashboard() {
     fileMeta: { fontSize: '12px', color: '#666', marginTop: '0.5rem' },
     teamList: { display: 'flex', flexDirection: 'column', gap: '0.5rem' },
     teamCard: { display: 'flex', alignItems: 'center', gap: '1rem', padding: '12px', background: '#111', borderRadius: '8px', border: '1px solid #333' },
-    teamRole: { background: '#222', padding: '4px 12px', borderRadius: '4px', fontSize: '12px', color: '#888', textTransform: 'capitalize' },
-    versionBtn: { padding: '4px 8px', background: '#f59e0b', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' },
-    saveBtn: { padding: '8px 16px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', marginTop: '0.5rem' }
+    teamRole: { background: '#222', padding: '4px 12px', borderRadius: '4px', fontSize: '12px', color: '#888', textTransform: 'capitalize' }
   }
 
   if (loading) return <div style={s.loading}>Loading...</div>
@@ -345,63 +305,63 @@ export default function Dashboard() {
 
         {activeTab === 'code' && (
           <div style={s.codeContainer}>
-            {/* Column 1: Add New */}
+            {/* Column 1: Add Code */}
             <div style={s.codePanel}>
-              <h3 style={s.panelTitle}>➕ Add Code</h3>
+              <h3 style={s.panelTitle}>1️⃣ Code</h3>
               <form onSubmit={addCodeNote} style={s.codeForm}>
-                <input type="text" placeholder="Title (e.g. Fix login button)" value={newCodeNote.title} onChange={e => setNewCodeNote({...newCodeNote, title: e.target.value})} style={s.input} />
+                <input type="text" placeholder="Title" value={newCodeNote.title} onChange={e => setNewCodeNote({...newCodeNote, title: e.target.value})} style={s.input} />
                 <input type="text" placeholder="GitHub File URL" value={newCodeNote.github_url} onChange={e => setNewCodeNote({...newCodeNote, github_url: e.target.value})} style={s.input} />
-                <input type="text" placeholder="File (e.g. App.tsx)" value={newCodeNote.file_name} onChange={e => setNewCodeNote({...newCodeNote, file_name: e.target.value})} style={s.input} />
-                <input type="text" placeholder="Expo Snack ID (optional)" value={newCodeNote.expo_snack_id} onChange={e => setNewCodeNote({...newCodeNote, expo_snack_id: e.target.value})} style={s.input} />
+                <input type="text" placeholder="File name" value={newCodeNote.file_name} onChange={e => setNewCodeNote({...newCodeNote, file_name: e.target.value})} style={s.input} />
                 <textarea placeholder="Description..." value={newCodeNote.description} onChange={e => setNewCodeNote({...newCodeNote, description: e.target.value})} style={{...s.input, minHeight: 60, resize:'vertical'}} />
                 <div style={{display:'flex', gap:'0.5rem'}}>
                   <select value={newCodeNote.priority} onChange={e => setNewCodeNote({...newCodeNote, priority: e.target.value as any})} style={s.input}><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select>
                   <input type="text" placeholder="Assign to..." value={newCodeNote.assignee} onChange={e => setNewCodeNote({...newCodeNote, assignee: e.target.value})} style={s.input} />
                 </div>
-                <button type="submit" style={s.addBtn}>Fetch & Add</button>
+                <button type="submit" style={s.addBtn}>Fetch Code</button>
               </form>
             </div>
 
-            {/* Column 2: Code */}
+            {/* Column 2: View */}
             <div style={s.codePanel}>
-              <h3 style={s.panelTitle}>💻 Code</h3>
-              <div style={{flex: 1, overflow: 'auto'}}>
-                {codeNotes.length === 0 && <p style={s.emptyText}>No code notes yet</p>}
-                {codeNotes.map(note => (
-                  <div key={note.id} style={{...s.codeNoteCard, borderLeftColor: note.status === 'resolved' ? '#10b981' : note.priority === 'high' ? '#ef4444' : '#6366f1', marginBottom: '1rem'}}>
-                    <div style={s.noteHeader}>
-                      <span style={{...s.noteBadge, background: note.status === 'resolved' ? '#10b981' : note.status === 'in_progress' ? '#f59e0b' : '#6366f1'}}>{note.status}</span>
-                      <span style={{...s.noteBadge, background: PRIORITY_COLORS[note.priority]}}>{note.priority}</span>
-                      <span style={s.noteFile}>{note.file_name || 'No file'}</span>
-                    </div>
-                    <div style={s.noteTitle}>{note.title}</div>
-                    {editingCode?.id === note.id ? (
-                      <>
-                        <textarea value={editingCode.code} onChange={e => setEditingCode({...editingCode, code: e.target.value})} style={s.codeTextarea} />
-                        <div style={{display: 'flex', gap: '0.5rem', marginTop: '0.5rem'}}>
-                          <button style={s.saveBtn} onClick={() => { saveCodeVersion(note.id, editingCode.code); setEditingCode(null) }}>Save Version</button>
-                          <button style={{...s.saveBtn, background: '#666'}} onClick={() => setEditingCode(null)}>Cancel</button>
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        {note.code_snippet && <pre style={s.codeBlock}>{note.code_snippet.slice(0, 500)}{note.code_snippet.length > 500 ? '...' : ''}</pre>}
-                        <button style={{...s.versionBtn, marginTop: '0.5rem'}} onClick={() => setEditingCode({id: note.id, code: note.code_snippet || ''})}>✏️ Edit Code</button>
-                      </>
-                    )}
-                  </div>
-                ))}
+              <h3 style={s.panelTitle}>2️⃣ View</h3>
+              <div style={{flex:1, display:'flex', alignItems:'center', justifyContent:'center'}}>
+                <p style={s.emptyText}>Coming soon...</p>
               </div>
             </div>
 
-            {/* Column 3: Preview */}
+            {/* Column 3: Figma Screenshots */}
             <div style={s.codePanel}>
-              <h3 style={s.panelTitle}>📱 Preview</h3>
-              <div style={{flex: 1, overflow: 'auto'}}>
-                {codeNotes.filter(n => n.expo_snack_id).map(note => (
-                  <div key={note.id} style={{marginBottom: '1rem'}}>
-                    <div style={s.noteTitle}>{note.title}</div>
-                    <iframe src={`https://snack.expo.dev/embedded/${note.expo_snack_id}?platform=ios&hideDevtools=true&hideQR=true`} style={{width: '100%', height: '400px', border: 'none', borderRadius: '8px', marginTop: '0.5rem'}} />
-                  </div>
-                ))}
-                {codeNotes.filter(n => n.expo_snack_id).length === 0 && <p style={s.emptyText}>Add Expo Snack ID to see preview</p>}
+              <h3 style={s.panelTitle}>3️⃣ Figma / Screenshots</h3>
+              <form onSubmit={addFigmaEmbed} style={{...s.taskForm, marginBottom:'1rem'}}>
+                <input type="text" placeholder="Figma URL..." value={newFigmaUrl} onChange={e => setNewFigmaUrl(e.target.value)} style={s.input} />
+                <button type="submit" style={s.addBtn}>Add</button>
+              </form>
+              {figmaEmbeds.map(e => <div key={e.id} style={s.figmaEmbed}><iframe src={e.url} style={{width:'100%',height:'100%',border:'none'}} allowFullScreen /></div>)}
+              <div style={{marginTop:'1rem'}}>
+                <input type="file" ref={fileInputRef} onChange={handleFileUpload} style={{display:'none'}} accept="image/*" />
+                <button onClick={() => fileInputRef.current?.click()} style={s.uploadBtn}>Upload Screenshot</button>
+              </div>
+              <div style={s.previewGrid}>
+                {files.filter(f => f.name.match(/\.(jpg|jpeg|png|gif)$/i)).map(f => (<div key={f.id} style={s.previewItem}><img src={f.url} alt={f.name} style={s.previewMedia} /><p style={s.previewName}>{f.name}</p></div>))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'design' && (
+          <div style={s.designContainer}>
+            <div style={s.designPanel}>
+              <h3 style={s.sectionTitle}>Figma</h3>
+              <form onSubmit={addFigmaEmbed} style={s.taskForm}><input type="text" placeholder="Figma URL..." value={newFigmaUrl} onChange={e => setNewFigmaUrl(e.target.value)} style={s.input} /><button type="submit" style={s.addBtn}>Add</button></form>
+              {figmaEmbeds.map(e => <div key={e.id} style={s.figmaEmbed}><iframe src={e.url} style={{width:'100%',height:'100%',border:'none'}} allowFullScreen /></div>)}
+            </div>
+            <div style={s.designPanel}>
+              <h3 style={s.sectionTitle}>Notes</h3>
+              <form onSubmit={addDesignNote} style={s.noteForm}>
+                <input type="text" placeholder="Issue title..." value={newNote.title} onChange={e => setNewNote({...newNote, title: e.target.value})} style={s.input} />
+                <input type="text" placeholder="Screen" value={newNote.screen} onChange={e => setNewNote({...newNote, screen: e.target.value})} style={s.input} />
+                <textarea placeholder="Description..." value={newNote.description} onChange={e => setNewNote({...newNote, description: e.target.value})} style={{...s.input, minHeight: 60}} />
+                <select value={newNote.priority} onChange={e => setNewNote({...newNote, priority: e.target.value as any})} style={s.input}><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select>
+                <button type="submit" style={s.addBtn}>Add Note</button>
+              </form>
+              <div style={s.notesList}>{designNotes.map(n => (<div key={n.id} style={{...s.noteCard, borderColor: n.status === 'resolved' ? '#10b981' : n.priority === 'high' ? '#
