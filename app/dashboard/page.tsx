@@ -212,8 +212,8 @@ export default function Dashboard() {
     taskAssignee: { fontSize: '0.75rem', color: '#666' },
     loading: { background: '#000', color: '#fff', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' },
     
-    // Code Review - 3 columns
-    codeContainer: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', minHeight: '600px' },
+    // Code Review - 4 columns
+    codeContainer: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '1rem', minHeight: '600px' },
     codePanel: { background: '#111', borderRadius: '12px', padding: '1rem', border: '1px solid #333', overflow: 'hidden', display: 'flex', flexDirection: 'column' },
     codeForm: { display: 'flex', flexDirection: 'column', gap: '0.75rem' },
     codeBlock: { background: '#0a0a0a', padding: '0.75rem', borderRadius: '6px', fontSize: '12px', overflow: 'auto', maxHeight: '300px', whiteSpace: 'pre', fontFamily: 'monospace' },
@@ -343,6 +343,36 @@ export default function Dashboard() {
               </div>
               <div style={s.previewGrid}>
                 {files.filter(f => f.name.match(/\.(jpg|jpeg|png|gif)$/i)).map(f => (<div key={f.id} style={s.previewItem}><img src={f.url} alt={f.name} style={s.previewMedia} /><p style={s.previewName}>{f.name}</p></div>))}
+              </div>
+            </div>
+
+            {/* Column 4: Notes */}
+            <div style={s.codePanel}>
+              <h3 style={s.panelTitle}>4️⃣ Notes</h3>
+              <div style={{flex:1, overflow:'auto'}}>
+                {codeNotes.length === 0 && <p style={s.emptyText}>No notes yet</p>}
+                {codeNotes.map(note => (
+                  <div key={note.id} style={{...s.codeNoteCard, borderLeftColor: note.status === 'resolved' ? '#10b981' : note.priority === 'high' ? '#ef4444' : '#6366f1', marginBottom:'0.75rem'}}>
+                    <div style={s.noteHeader}>
+                      <span style={{...s.noteBadge, background: note.status === 'resolved' ? '#10b981' : note.status === 'in_progress' ? '#f59e0b' : '#6366f1'}}>{note.status}</span>
+                      <span style={{...s.noteBadge, background: PRIORITY_COLORS[note.priority]}}>{note.priority}</span>
+                      <span style={s.noteFile}>{note.file_name}</span>
+                      <button onClick={() => deleteCodeNote(note.id)} style={s.deleteBtn}>✕</button>
+                    </div>
+                    <div style={s.noteTitle}>{note.title}</div>
+                    {note.description && <div style={s.noteDesc}>{note.description}</div>}
+                    {note.code_snippet && <pre style={s.codeBlock}>{note.code_snippet.slice(0, 300)}{note.code_snippet.length > 300 ? '...' : ''}</pre>}
+                    <div style={s.noteMeta}>
+                      <span>👤 {note.created_by}</span>
+                      <span>→ {note.assignee}</span>
+                      <select value={note.status} onChange={e => updateCodeNoteStatus(note.id, e.target.value)} style={s.noteSelect}>
+                        <option value="open">Open</option>
+                        <option value="in_progress">In Progress</option>
+                        <option value="resolved">Resolved</option>
+                      </select>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
