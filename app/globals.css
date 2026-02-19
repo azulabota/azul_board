@@ -1,8 +1,7 @@
-.globals.css {
-  :root {
-    --foreground-rgb: 0, 0, 0;
-    --background-rgb: 255, 255, 255;
-  }
+:root {
+  --foreground-rgb: 0, 0, 0;
+  --background-rgb: 255, 255, 255;
+}
 
   body {
     color: rgb(var(--foreground-rgb));
