@@ -9,7 +9,8 @@ interface File { id: number; name: string; url: string; uploaded_by: string; cre
 interface TeamMember { id: number; email: string; role: string; created_at: string }
 interface DesignNote { id: number; title: string; description: string; status: 'open' | 'in_progress' | 'resolved'; screen: string; priority: 'high' | 'medium' | 'low'; created_by: string; created_at: string }
 interface FigmaEmbed { id: number; name: string; url: string; created_at: string }
-interface CodeNote { id: number; title: string; description: string; code_snippet: string; file_name: string; status: 'open' | 'in_progress' | 'resolved'; priority: 'high' | 'medium' | 'low'; assignee: string; created_by: string; created_at: string }
+interface CodeNote { id: number; title: string; description: string; code_snippet: string; file_name: string; github_url: string; expo_snack_id: string; status: 'open' | 'in_progress' | 'resolved'; priority: 'high' | 'medium' | 'low'; assignee: string; created_by: string; created_at: string }
+interface CodeVersion { id: number; code_note_id: number; code_snippet: string; version: number; created_by: string; created_at: string }
 
 const COLUMNS = [
   { id: 'todo', title: 'To Do', color: '#6366f1' },
@@ -29,6 +30,7 @@ export default function Dashboard() {
   const [designNotes, setDesignNotes] = useState<DesignNote[]>([])
   const [figmaEmbeds, setFigmaEmbeds] = useState<FigmaEmbed[]>([])
   const [codeNotes, setCodeNotes] = useState<CodeNote[]>([])
+  const [codeVersions, setCodeVersions] = useState<CodeVersion[]>([])
   const [loading, setLoading] = useState(true)
   const [draggedTask, setDraggedTask] = useState<number | null>(null)
   const [newTask, setNewTask] = useState('')
@@ -39,7 +41,8 @@ export default function Dashboard() {
   const [inviteRole, setInviteRole] = useState('developer')
   const [newNote, setNewNote] = useState({ title: '', description: '', screen: '', priority: 'medium' as const })
   const [newFigmaUrl, setNewFigmaUrl] = useState('')
-  const [newCodeNote, setNewCodeNote] = useState({ title: '', description: '', code_snippet: '', file_name: '', priority: 'medium' as const, assignee: '' })
+  const [newCodeNote, setNewCodeNote] = useState({ title: '', description: '', github_url: '', expo_snack_id: '', file_name: '', priority: 'medium' as const, assignee: '' })
+  const [editingCode, setEditingCode] = useState<{id: number, code: string} | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => { checkUser() }, [])
@@ -51,14 +54,15 @@ export default function Dashboard() {
 
   const fetchData = async () => {
     setLoading(true)
-    const [tasksRes, milestonesRes, filesRes, teamRes, notesRes, figmaRes, codeNotesRes] = await Promise.all([
+    const [tasksRes, milestonesRes, filesRes, teamRes, notesRes, figmaRes, codeNotesRes, versionsRes] = await Promise.all([
       supabase.from('tasks').select('*').order('created_at', { ascending: false }),
       supabase.from('milestones').select('*').order('due_date', { ascending: true }),
       supabase.from('files').select('*').order('created_at', { ascending: false }),
       supabase.from('team').select('*').order('created_at', { ascending: false }),
       supabase.from('design_notes').select('*').order('created_at', { ascending: false }),
       supabase.from('figma_embeds').select('*').order('created_at', { ascending: false }),
-      supabase.from('code_notes').select('*').order('created_at', { ascending: false })
+      supabase.from('code_notes').select('*').order('created_at', { ascending: false }),
+      supabase.from('code_versions').select('*').order('created_at', { ascending: false })
     ])
     if (tasksRes.data) setTasks(tasksRes.data)
     if (milestonesRes.data) setMilestones(milestonesRes.data)
@@ -67,6 +71,7 @@ export default function Dashboard() {
     if (notesRes.data) setDesignNotes(notesRes.data)
     if (figmaRes.data) setFigmaEmbeds(figmaRes.data)
     if (codeNotesRes.data) setCodeNotes(codeNotesRes.data)
+    if (versionsRes.data) setCodeVersions(versionsRes.data)
     setLoading(false)
   }
 
@@ -123,18 +128,84 @@ export default function Dashboard() {
     if (data) setFigmaEmbeds([...figmaEmbeds, data[0]])
     setNewFigmaUrl('')
   }
+
+  const fetchGitHubCode = async (url: string) => {
+    // Convert github.com URL to raw.githubusercontent.com
+    let rawUrl = url.replace('github.com', 'raw.githubusercontent.com').replace('/blob/', '/')
+    if (!rawUrl.includes('raw.githubusercontent.com')) {
+      alert('Please enter a valid GitHub file URL')
+      return null
+    }
+    try {
+      const res = await fetch(rawUrl)
+      if (!res.ok) throw new Error('Failed to fetch')
+      return await res.text()
+    } catch (err) {
+      alert('Could not fetch code from that URL')
+      return null
+    }
+  }
+
   const addCodeNote = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!newCodeNote.title.trim()) return
-    const { data } = await supabase.from('code_notes').insert([{ title: newCodeNote.title, description: newCodeNote.description, code_snippet: newCodeNote.code_snippet, file_name: newCodeNote.file_name, priority: newCodeNote.priority, status: 'open', assignee: newCodeNote.assignee || 'Unassigned', created_by: user?.email }]).select()
-    if (data) setCodeNotes([data[0], ...codeNotes])
-    setNewCodeNote({ title: '', description: '', code_snippet: '', file_name: '', priority: 'medium', assignee: '' })
+    
+    let codeSnippet = ''
+    if (newCodeNote.github_url) {
+      codeSnippet = await fetchGitHubCode(newCodeNote.github_url) || '// Could not fetch code'
+    }
+
+    const { data } = await supabase.from('code_notes').insert([{ 
+      title: newCodeNote.title, 
+      description: newCodeNote.description, 
+      code_snippet: codeSnippet,
+      file_name: newCodeNote.file_name, 
+      github_url: newCodeNote.github_url,
+      expo_snack_id: newCodeNote.expo_snack_id,
+      priority: newCodeNote.priority, 
+      status: 'open', 
+      assignee: newCodeNote.assignee || 'Unassigned', 
+      created_by: user?.email 
+    }]).select()
+
+    if (data) {
+      setCodeNotes([data[0], ...codeNotes])
+      // Save first version
+      if (codeSnippet) {
+        await supabase.from('code_versions').insert([{
+          code_note_id: data[0].id,
+          code_snippet: codeSnippet,
+          version: 1,
+          created_by: user?.email
+        }])
+      }
+    }
+    setNewCodeNote({ title: '', description: '', github_url: '', expo_snack_id: '', file_name: '', priority: 'medium', assignee: '' })
   }
+
   const updateCodeNoteStatus = async (id: number, status: string) => {
     await supabase.from('code_notes').update({ status }).eq('id', id)
     setCodeNotes(codeNotes.map(n => n.id === id ? { ...n, status: status as any } : n))
   }
-  const deleteCodeNote = async (id: number) => { await supabase.from('code_notes').delete().eq('id', id); setCodeNotes(codeNotes.filter(n => n.id !== id)) }
+
+  const saveCodeVersion = async (noteId: number, code: string) => {
+    const currentVersions = codeVersions.filter(v => v.code_note_id === noteId)
+    const newVersion = currentVersions.length + 1
+    await supabase.from('code_versions').insert([{
+      code_note_id: noteId,
+      code_snippet: code,
+      version: newVersion,
+      created_by: user?.email
+    }])
+    setCodeVersions([...codeVersions, { id: Date.now(), code_note_id: noteId, code_snippet: code, version: newVersion, created_by: user?.email, created_at: new Date().toISOString() }])
+  }
+
+  const deleteCodeNote = async (id: number) => { 
+    await supabase.from('code_versions').delete().eq('code_note_id', id)
+    await supabase.from('code_notes').delete().eq('id', id)
+    setCodeNotes(codeNotes.filter(n => n.id !== id))
+  }
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -145,6 +216,7 @@ export default function Dashboard() {
     const { data } = await supabase.from('files').insert([{ name: file.name, url: publicUrl, uploaded_by: user?.email }]).select()
     if (data) setFiles([data[0], ...files])
   }
+
   const getTasksByStatus = (status: string) => tasks.filter(t => t.status === status)
   const completedTasks = tasks.filter(t => t.status === 'done').length
 
@@ -179,11 +251,17 @@ export default function Dashboard() {
     taskTitle: { fontWeight: '500', marginBottom: '0.25rem' },
     taskAssignee: { fontSize: '0.75rem', color: '#666' },
     loading: { background: '#000', color: '#fff', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' },
-    codeContainer: { display: 'grid', gridTemplateColumns: '400px 1fr', gap: '1rem' },
-    codePanel: { background: '#111', borderRadius: '12px', padding: '1rem', border: '1px solid #333' },
+    
+    // Code Review - 4 columns
+    codeContainer: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '1rem', minHeight: '600px' },
+    codePanel: { background: '#111', borderRadius: '12px', padding: '1rem', border: '1px solid #333', overflow: 'hidden', display: 'flex', flexDirection: 'column' },
     codeForm: { display: 'flex', flexDirection: 'column', gap: '0.75rem' },
-    codeBlock: { background: '#0a0a0a', padding: '0.75rem', borderRadius: '6px', fontSize: '12px', overflow: 'auto', maxHeight: '200px', marginTop: '0.5rem', whiteSpace: 'pre' },
-    codeNoteCard: { background: '#0a0a0a', padding: '1rem', borderRadius: '8px', border: '1px solid', borderLeftWidth: '4px', marginBottom: '0.75rem' },
+    codeBlock: { background: '#0a0a0a', padding: '0.75rem', borderRadius: '6px', fontSize: '12px', overflow: 'auto', maxHeight: '300px', whiteSpace: 'pre', fontFamily: 'monospace' },
+    codeNoteCard: { background: '#0a0a0a', padding: '1rem', borderRadius: '8px', border: '1px solid', borderLeftWidth: '4px', marginBottom: '0.75rem', flexShrink: 0 },
+    codeTextarea: { background: '#0a0a0a', padding: '0.75rem', borderRadius: '6px', fontSize: '12px', width: '100%', minHeight: '200px', color: '#fff', fontFamily: 'monospace', border: '1px solid #333' },
+    panelTitle: { marginBottom: '1rem', fontSize: '1rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.5rem' },
+    
+    // Design
     designContainer: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' },
     designPanel: { background: '#111', borderRadius: '12px', padding: '1rem', border: '1px solid #333' },
     sectionTitle: { marginBottom: '1rem', fontSize: '1rem', fontWeight: '600' },
@@ -201,7 +279,7 @@ export default function Dashboard() {
     noteTitle: { fontWeight: '600', marginBottom: '0.25rem' },
     noteScreen: { fontSize: '0.75rem', color: '#6366f1', marginBottom: '0.25rem' },
     noteDesc: { fontSize: '0.875rem', color: '#888', marginBottom: '0.5rem' },
-    noteMeta: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', color: '#666', gap: '0.5rem' },
+    noteMeta: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', color: '#666', gap: '0.5rem', flexWrap: 'wrap' },
     noteSelect: { background: '#222', color: '#fff', border: 'none', padding: '4px', borderRadius: '4px', fontSize: '12px' },
     noteFile: { marginLeft: 'auto', fontSize: '0.75rem', color: '#666', background: '#222', padding: '2px 8px', borderRadius: '4px' },
     emptyText: { color: '#666', fontSize: '0.875rem', textAlign: 'center', padding: '2rem' },
@@ -215,7 +293,9 @@ export default function Dashboard() {
     fileMeta: { fontSize: '12px', color: '#666', marginTop: '0.5rem' },
     teamList: { display: 'flex', flexDirection: 'column', gap: '0.5rem' },
     teamCard: { display: 'flex', alignItems: 'center', gap: '1rem', padding: '12px', background: '#111', borderRadius: '8px', border: '1px solid #333' },
-    teamRole: { background: '#222', padding: '4px 12px', borderRadius: '4px', fontSize: '12px', color: '#888', textTransform: 'capitalize' }
+    teamRole: { background: '#222', padding: '4px 12px', borderRadius: '4px', fontSize: '12px', color: '#888', textTransform: 'capitalize' },
+    versionBtn: { padding: '4px 8px', background: '#f59e0b', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' },
+    saveBtn: { padding: '8px 16px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', marginTop: '0.5rem' }
   }
 
   if (loading) return <div style={s.loading}>Loading...</div>
@@ -265,81 +345,63 @@ export default function Dashboard() {
 
         {activeTab === 'code' && (
           <div style={s.codeContainer}>
+            {/* Column 1: Add New */}
             <div style={s.codePanel}>
-              <h3 style={s.sectionTitle}>Add Code Note</h3>
+              <h3 style={s.panelTitle}>➕ Add Code</h3>
               <form onSubmit={addCodeNote} style={s.codeForm}>
-                <input type="text" placeholder="What are you looking for?" value={newCodeNote.title} onChange={e => setNewCodeNote({...newCodeNote, title: e.target.value})} style={s.input} />
+                <input type="text" placeholder="Title (e.g. Fix login button)" value={newCodeNote.title} onChange={e => setNewCodeNote({...newCodeNote, title: e.target.value})} style={s.input} />
+                <input type="text" placeholder="GitHub File URL" value={newCodeNote.github_url} onChange={e => setNewCodeNote({...newCodeNote, github_url: e.target.value})} style={s.input} />
+                <input type="text" placeholder="File (e.g. App.tsx)" value={newCodeNote.file_name} onChange={e => setNewCodeNote({...newCodeNote, file_name: e.target.value})} style={s.input} />
+                <input type="text" placeholder="Expo Snack ID (optional)" value={newCodeNote.expo_snack_id} onChange={e => setNewCodeNote({...newCodeNote, expo_snack_id: e.target.value})} style={s.input} />
+                <textarea placeholder="Description..." value={newCodeNote.description} onChange={e => setNewCodeNote({...newCodeNote, description: e.target.value})} style={{...s.input, minHeight: 60, resize:'vertical'}} />
                 <div style={{display:'flex', gap:'0.5rem'}}>
-                  <input type="text" placeholder="File (e.g. App.tsx)" value={newCodeNote.file_name} onChange={e => setNewCodeNote({...newCodeNote, file_name: e.target.value})} style={s.input} />
                   <select value={newCodeNote.priority} onChange={e => setNewCodeNote({...newCodeNote, priority: e.target.value as any})} style={s.input}><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select>
+                  <input type="text" placeholder="Assign to..." value={newCodeNote.assignee} onChange={e => setNewCodeNote({...newCodeNote, assignee: e.target.value})} style={s.input} />
                 </div>
-                <textarea placeholder="Describe what you need..." value={newCodeNote.description} onChange={e => setNewCodeNote({...newCodeNote, description: e.target.value})} style={{...s.input, minHeight: 60, resize:'vertical'}} />
-                <textarea placeholder="Paste code snippet (optional)" value={newCodeNote.code_snippet} onChange={e => setNewCodeNote({...newCodeNote, code_snippet: e.target.value})} style={{...s.input, minHeight: 100, fontFamily:'monospace', fontSize:'12px', resize:'vertical'}} />
-                <div style={{display:'flex', gap:'0.5rem', alignItems:'center'}}>
-                  <input type="text" placeholder="Assign to..." value={newCodeNote.assignee} onChange={e => setNewCodeNote({...newCodeNote, assignee: e.target.value})} style={{...s.input, flex:1}} />
-                  <button type="submit" style={s.addBtn}>Post</button>
-                </div>
+                <button type="submit" style={s.addBtn}>Fetch & Add</button>
               </form>
             </div>
+
+            {/* Column 2: Code */}
             <div style={s.codePanel}>
-              <h3 style={s.sectionTitle}>Code Notes ({codeNotes.length})</h3>
-              <div style={s.notesList}>
-                {codeNotes.length === 0 && <p style={s.emptyText}>No code notes yet. Post one above.</p>}
+              <h3 style={s.panelTitle}>💻 Code</h3>
+              <div style={{flex: 1, overflow: 'auto'}}>
+                {codeNotes.length === 0 && <p style={s.emptyText}>No code notes yet</p>}
                 {codeNotes.map(note => (
-                  <div key={note.id} style={{...s.codeNoteCard, borderLeftColor: note.status === 'resolved' ? '#10b981' : note.priority === 'high' ? '#ef4444' : '#6366f1'}}>
+                  <div key={note.id} style={{...s.codeNoteCard, borderLeftColor: note.status === 'resolved' ? '#10b981' : note.priority === 'high' ? '#ef4444' : '#6366f1', marginBottom: '1rem'}}>
                     <div style={s.noteHeader}>
                       <span style={{...s.noteBadge, background: note.status === 'resolved' ? '#10b981' : note.status === 'in_progress' ? '#f59e0b' : '#6366f1'}}>{note.status}</span>
                       <span style={{...s.noteBadge, background: PRIORITY_COLORS[note.priority]}}>{note.priority}</span>
                       <span style={s.noteFile}>{note.file_name || 'No file'}</span>
-                      <button onClick={() => deleteCodeNote(note.id)} style={s.deleteBtn}>✕</button>
                     </div>
                     <div style={s.noteTitle}>{note.title}</div>
-                    {note.description && <div style={s.noteDesc}>{note.description}</div>}
-                    {note.code_snippet && <pre style={s.codeBlock}>{note.code_snippet}</pre>}
-                    <div style={s.noteMeta}>
-                      <span>👤 {note.created_by}</span><span>→ {note.assignee}</span>
-                      <select value={note.status} onChange={e => updateCodeNoteStatus(note.id, e.target.value)} style={s.noteSelect}><option value="open">Open</option><option value="in_progress">In Progress</option><option value="resolved">Resolved</option></select>
-                    </div>
+                    {editingCode?.id === note.id ? (
+                      <>
+                        <textarea value={editingCode.code} onChange={e => setEditingCode({...editingCode, code: e.target.value})} style={s.codeTextarea} />
+                        <div style={{display: 'flex', gap: '0.5rem', marginTop: '0.5rem'}}>
+                          <button style={s.saveBtn} onClick={() => { saveCodeVersion(note.id, editingCode.code); setEditingCode(null) }}>Save Version</button>
+                          <button style={{...s.saveBtn, background: '#666'}} onClick={() => setEditingCode(null)}>Cancel</button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        {note.code_snippet && <pre style={s.codeBlock}>{note.code_snippet.slice(0, 500)}{note.code_snippet.length > 500 ? '...' : ''}</pre>}
+                        <button style={{...s.versionBtn, marginTop: '0.5rem'}} onClick={() => setEditingCode({id: note.id, code: note.code_snippet || ''})}>✏️ Edit Code</button>
+                      </>
+                    )}
                   </div>
                 ))}
               </div>
             </div>
-          </div>
-        )}
 
-        {activeTab === 'design' && (
-          <div style={s.designContainer}>
-            <div style={s.designPanel}>
-              <h3 style={s.sectionTitle}>Figma</h3>
-              <form onSubmit={addFigmaEmbed} style={s.taskForm}><input type="text" placeholder="Figma URL..." value={newFigmaUrl} onChange={e => setNewFigmaUrl(e.target.value)} style={s.input} /><button type="submit" style={s.addBtn}>Add</button></form>
-              {figmaEmbeds.map(e => <div key={e.id} style={s.figmaEmbed}><iframe src={e.url} style={{width:'100%',height:'100%',border:'none'}} allowFullScreen /></div>)}
-              {figmaEmbeds.length === 0 && <p style={s.emptyText}>Add Figma link</p>}
-            </div>
-            <div style={s.designPanel}>
-              <h3 style={s.sectionTitle}>App Preview</h3>
-              <div style={{marginBottom:'1rem'}}><input type="file" ref={fileInputRef} onChange={handleFileUpload} style={{display:'none'}} accept="image/*,video/*" /><button onClick={() => fileInputRef.current?.click()} style={s.uploadBtn}>Upload Screenshot/Video</button></div>
-              <div style={s.previewGrid}>{files.filter(f => f.name.match(/\.(jpg|jpeg|png|gif|mp4|mov)$/i)).map(f => (<div key={f.id} style={s.previewItem}>{f.name.match(/\.(mp4|mov)$/i) ? <video src={f.url} controls style={s.previewMedia} /> : <img src={f.url} alt={f.name} style={s.previewMedia} />}<p style={s.previewName}>{f.name}</p></div>))}</div>
-            </div>
-            <div style={s.designPanel}>
-              <h3 style={s.sectionTitle}>Design Notes</h3>
-              <form onSubmit={addDesignNote} style={s.noteForm}>
-                <input type="text" placeholder="Issue title..." value={newNote.title} onChange={e => setNewNote({...newNote, title: e.target.value})} style={s.input} />
-                <input type="text" placeholder="Screen (e.g. Home)" value={newNote.screen} onChange={e => setNewNote({...newNote, screen: e.target.value})} style={s.input} />
-                <textarea placeholder="Description..." value={newNote.description} onChange={e => setNewNote({...newNote, description: e.target.value})} style={{...s.input, minHeight: 60}} />
-                <select value={newNote.priority} onChange={e => setNewNote({...newNote, priority: e.target.value as any})} style={s.input}><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select>
-                <button type="submit" style={s.addBtn}>Add Note</button>
-              </form>
-              <div style={s.notesList}>{designNotes.map(n => (<div key={n.id} style={{...s.noteCard, borderColor: n.status === 'resolved' ? '#10b981' : n.priority === 'high' ? '#ef4444' : '#333'}}><div style={s.noteHeader}><span style={{...s.noteBadge, background: n.status === 'resolved' ? '#10b981' : n.status === 'in_progress' ? '#f59e0b' : '#6366f1'}}>{n.status}</span><span style={{...s.noteBadge, background: PRIORITY_COLORS[n.priority]}}>{n.priority}</span><button onClick={() => deleteNote(n.id)} style={s.deleteBtn}>✕</button></div><div style={s.noteTitle}>{n.title}</div>{n.screen && <div style={s.noteScreen}>📱 {n.screen}</div>}{n.description && <div style={s.noteDesc}>{n.description}</div>}<div style={s.noteMeta}><span>{n.created_by}</span><select value={n.status} onChange={e => updateNoteStatus(n.id, e.target.value)} style={s.noteSelect}><option value="open">Open</option><option value="in_progress">In Progress</option><option value="resolved">Resolved</option></select></div></div>))}</div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'milestones' && (
-          <div>
-            <form onSubmit={addMilestone} style={s.taskForm}>
-              <input type="text" placeholder="Milestone title..." value={newMilestone.title} onChange={e => setNewMilestone({...newMilestone, title: e.target.value})} style={s.input} />
-              <input type="text" placeholder="Description" value={newMilestone.description} onChange={e => setNewMilestone({...newMilestone, description: e.target.value})} style={s.input} />
-              <input type="date" value={newMilestone.due_date} onChange={e => setNewMilestone({...newMilestone, due_date: e.target.value})} style={s.input} />
-              <button type="submit" style={s.addBtn}>Add</button>
-            </form>
-            <div style={s.milestoneGrid}>{milestones.map(m => (<div key={m.id} style={{...s.milestoneCard, borderColor: m.completed ? '#10b981' : '#333'}}><h3>{m.title}</h3><p>{m.description}</p><div style={s.progressBar}><div style={{...s.progressFill, width:`${m.progress}%`, background: m.completed ? '#10b981' : '#6366f1
+            {/* Column 3: Preview */}
+            <div style={s.codePanel}>
+              <h3 style={s.panelTitle}>📱 Preview</h3>
+              <div style={{flex: 1, overflow: 'auto'}}>
+                {codeNotes.filter(n => n.expo_snack_id).map(note => (
+                  <div key={note.id} style={{marginBottom: '1rem'}}>
+                    <div style={s.noteTitle}>{note.title}</div>
+                    <iframe src={`https://snack.expo.dev/embedded/${note.expo_snack_id}?platform=ios&hideDevtools=true&hideQR=true`} style={{width: '100%', height: '400px', border: 'none', borderRadius: '8px', marginTop: '0.5rem'}} />
+                  </div>
+                ))}
+                {codeNotes.filter(n => n.expo_snack_id).length === 0 && <p style={s.emptyText}>Add Expo Snack ID to see preview</p>}
