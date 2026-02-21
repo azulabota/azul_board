@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 interface Milestone { id: number; title: string }
 interface Task { id: number; milestone_id: number; title: string; status: string; priority: string; assignee: string; description: string; created_by: string }
 interface File { id: number; milestone_id: number; name: string; url: string }
-interface Revision { id: number; milestone_id: number; title: string; code_snippet: string; file_name: string; image_url: string; description: string; priority: string; status: string; assignee: string; created_by: string }
+interface Revision { id: number; milestone_id: number; title: string; code_snippet: string; file_name: string; image_url: string; description: string; priority: string; status: string; assignee: string; created_by: string; created_at?: string }
 
 export default function Dashboard() {
   const router = useRouter()
@@ -43,6 +43,7 @@ export default function Dashboard() {
   const [editFileName, setEditFileName] = useState('')
   const [editingImageId, setEditingImageId] = useState<number | null>(null)
   const [editImageUrl, setEditImageUrl] = useState('')
+  const [selectedRevision, setSelectedRevision] = useState<number | null>(null)
   const codeInputRef = useRef<HTMLInputElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
   const PRIORITY_COLORS: Record<string, string> = { high: '#ef4444', medium: '#f59e0b', low: '#10b981' }
@@ -356,7 +357,8 @@ export default function Dashboard() {
             </div>
             <div style={s.revContainer}>
               <div style={s.revPanel}>
-                <div style={s.panelTitle}>💻 Code</div>
+                <div style={s.panelTitle}>💻 Code Editor</div>
+                <p style={{fontSize:'0.7rem',color:'#666',marginBottom:'0.75rem'}}>Write and edit code snippets</p>
                 {milestoneRevisions.map(r => (
                   <div key={r.id} style={{...s.revCard, borderLeftColor:r.priority==='high'?'#ef4444':r.priority==='medium'?'#f59e0b':'#10b981'}}>
                     <div style={{fontWeight:'600',marginBottom:'0.5rem'}}>{r.title}</div>
@@ -384,7 +386,8 @@ export default function Dashboard() {
                 ))}
               </div>
               <div style={s.revPanel}>
-                <div style={s.panelTitle}>🖼️ View</div>
+                <div style={s.panelTitle}>🖼️ Image (Figma UX)</div>
+                <p style={{fontSize:'0.7rem',color:'#666',marginBottom:'0.75rem'}}>Upload design screenshots</p>
                 {milestoneRevisions.map(r => (
                   <div key={r.id} style={{marginBottom:'1rem'}}>
                     <div style={{fontWeight:'600',marginBottom:'0.5rem',fontSize:'0.875rem'}}>{r.title}</div>
@@ -442,6 +445,57 @@ export default function Dashboard() {
                 ))}
               </div>
             </div>
+
+            {/* Revision Log */}
+            <div style={{marginTop:'2rem', borderTop:'1px solid #333', paddingTop:'1.5rem'}}>
+              <div style={{fontWeight:'600', fontSize:'1rem', marginBottom:'1rem'}}>📋 Revision Log</div>
+              <div style={{display:'flex', flexDirection:'column', gap:'0.5rem'}}>
+                {revisions.length === 0 ? (
+                  <p style={{color:'#666', fontSize:'0.875rem'}}>No revisions yet</p>
+                ) : (
+                  revisions.map(r => (
+                    <div key={r.id} onClick={() => setSelectedRevision(r.id)} style={{padding:'0.75rem', background:'#111', borderRadius:'6px', border:'1px solid #333', cursor:'pointer', display:'flex', alignItems:'center', gap:'0.75rem'}}>
+                      <span style={{padding:'2px 6px', borderRadius:'4px', fontSize:'10px', background:r.status==='done'?'#10b981':r.status==='in_progress'?'#f59e0b':'#6366f1', color:'#fff'}}>{r.status}</span>
+                      <span style={{flex:1, fontWeight:'500', fontSize:'0.875rem'}}>{r.title}</span>
+                      <span style={{fontSize:'0.75rem', color:'#666'}}>{r.assignee}</span>
+                      <span style={{fontSize:'0.7rem', color:'#444'}}>{r.created_at ? new Date(r.created_at).toLocaleDateString() : ''}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Revision Detail Modal */}
+            {selectedRevision && (() => {
+              const r = revisions.find(rev => rev.id === selectedRevision)
+              if (!r) return null
+              return (
+                <div style={{position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,0.8)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:1000}} onClick={() => setSelectedRevision(null)}>
+                  <div style={{background:'#111', padding:'1.5rem', borderRadius:'12px', maxWidth:'600px', width:'90%', maxHeight:'80vh', overflow:'auto', border:'1px solid #333'}} onClick={e => e.stopPropagation()}>
+                    <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'1rem'}}>
+                      <h3 style={{margin:0}}>{r.title}</h3>
+                      <button onClick={() => setSelectedRevision(null)} style={{background:'transparent', border:'none', color:'#666', cursor:'pointer', fontSize:'18px'}}>✕</button>
+                    </div>
+                    <div style={{marginBottom:'1rem'}}>
+                      <span style={{padding:'2px 8px', borderRadius:'4px', fontSize:'12px', background:r.status==='done'?'#10b981':r.status==='in_progress'?'#f59e0b':'#6366f1', color:'#fff', marginRight:'0.5rem'}}>{r.status}</span>
+                      <span style={{padding:'2px 8px', borderRadius:'4px', fontSize:'12px', background:PRIORITY_COLORS[r.priority], color:'#fff'}}>{r.priority}</span>
+                    </div>
+                    {r.file_name && <div style={{fontSize:'0.8rem', color:'#666', marginBottom:'0.5rem'}}>📄 {r.file_name}</div>}
+                    {r.code_snippet && <div style={{marginBottom:'1rem'}}><div style={{fontSize:'0.75rem', color:'#666', marginBottom:'0.25rem'}}>Code:</div><pre style={{background:'#000', padding:'0.75rem', borderRadius:'4px', fontSize:'11px', overflow:'auto', maxHeight:'150px', margin:0}}>{r.code_snippet}</pre></div>}
+                    {r.image_url && <div style={{marginBottom:'1rem'}}><div style={{fontSize:'0.75rem', color:'#666', marginBottom:'0.25rem'}}>Image:</div><img src={r.image_url} alt="Screenshot" style={{width:'100%', borderRadius:'4px', border:'1px solid #333'}} /></div>}
+                    <div style={{marginBottom:'1rem'}}><div style={{fontSize:'0.75rem', color:'#666', marginBottom:'0.25rem'}}>Notes:</div><div style={{background:'#0a0a0a', padding:'0.75rem', borderRadius:'4px', fontSize:'0.875rem', color:'#ccc'}}>{r.description || 'No notes'}</div></div>
+                    <div style={{fontSize:'0.75rem', color:'#666', marginBottom:'1rem'}}>👤 {r.created_by} → {r.assignee}</div>
+                    {(r.created_by === user?.email) && (
+                      <div style={{display:'flex', gap:'0.5rem'}}>
+                        <button onClick={() => { setEditingCodeId(r.id); setEditCodeSnippet(r.code_snippet || ''); setEditFileName(r.file_name || '') }} style={{padding:'6px 12px', background:'#333', color:'#fff', border:'none', borderRadius:'4px', cursor:'pointer', fontSize:'12px'}}>✏️ Edit Code</button>
+                        <button onClick={() => { setEditingImageId(r.id); setEditImageUrl(r.image_url || '') }} style={{padding:'6px 12px', background:'#333', color:'#fff', border:'none', borderRadius:'4px', cursor:'pointer', fontSize:'12px'}}>🖼️ Edit Image</button>
+                        <button onClick={() => { setEditingNoteId(r.id); setEditNoteText(r.description || '') }} style={{padding:'6px 12px', background:'#333', color:'#fff', border:'none', borderRadius:'4px', cursor:'pointer', fontSize:'12px'}}>📝 Edit Notes</button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            })()}
           </div>
         )}
       </div>
