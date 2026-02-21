@@ -178,6 +178,21 @@ export default function Dashboard() {
     setEditingImageId(null)
   }
 
+  const saveQuickCode = async (revId: number, code: string, fileName: string) => {
+    await supabase.from('revisions').update({ code_snippet: code, file_name: fileName }).eq('id', revId)
+    setRevisions(revisions.map(r => r.id === revId ? { ...r, code_snippet: code, file_name: fileName } : r))
+  }
+
+  const saveQuickImage = async (revId: number, url: string) => {
+    await supabase.from('revisions').update({ image_url: url }).eq('id', revId)
+    setRevisions(revisions.map(r => r.id === revId ? { ...r, image_url: url } : r))
+  }
+
+  const saveQuickNote = async (revId: number, note: string) => {
+    await supabase.from('revisions').update({ description: note }).eq('id', revId)
+    setRevisions(revisions.map(r => r.id === revId ? { ...r, description: note } : r))
+  }
+
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, revisionId: number) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -359,6 +374,23 @@ export default function Dashboard() {
               <div style={s.revPanel}>
                 <div style={s.panelTitle}>💻 Code Editor</div>
                 <p style={{fontSize:'0.7rem',color:'#666',marginBottom:'0.75rem'}}>Write and edit code snippets</p>
+                
+                {/* Quick add code */}
+                <div style={{marginBottom:'1rem', padding:'0.75rem', background:'#1a1a1a', borderRadius:'8px'}}>
+                  <input type="text" id="quickCodeFile" placeholder="File name (e.g. App.tsx)" style={{width:'100%', padding:'8px', background:'#111', border:'1px solid #333', borderRadius:'4px', color:'#fff', fontSize:'12px', marginBottom:'0.5rem'}} />
+                  <textarea id="quickCodeText" placeholder="Paste or type code here..." style={{width:'100%', padding:'8px', background:'#111', border:'1px solid #333', borderRadius:'4px', color:'#fff', fontSize:'11px', marginBottom:'0.5rem', minHeight:'60px', fontFamily:'monospace'}} />
+                  <select id="quickCodeRev" style={{padding:'6px', background:'#111', border:'1px solid #333', borderRadius:'4px', color:'#fff', fontSize:'12px', width:'100%', marginBottom:'0.5rem'}}>
+                    <option value="">Select revision...</option>
+                    {milestoneRevisions.map(r => (<option key={r.id} value={r.id}>{r.title}</option>))}
+                  </select>
+                  <button onClick={() => {
+                    const revId = parseInt((document.getElementById('quickCodeRev') as HTMLSelectElement).value)
+                    const code = (document.getElementById('quickCodeText') as HTMLTextAreaElement).value
+                    const file = (document.getElementById('quickCodeFile') as HTMLInputElement).value
+                    if (revId && code) { saveQuickCode(revId, code, file) }
+                  }} style={{padding:'6px 12px', background:'#6366f1', color:'#fff', border:'none', borderRadius:'4px', cursor:'pointer', fontSize:'12px', width:'100%'}}>Add Code</button>
+                </div>
+
                 {milestoneRevisions.map(r => (
                   <div key={r.id} style={{...s.revCard, borderLeftColor:r.priority==='high'?'#ef4444':r.priority==='medium'?'#f59e0b':'#10b981'}}>
                     <div style={{fontWeight:'600',marginBottom:'0.5rem'}}>{r.title}</div>
@@ -388,6 +420,21 @@ export default function Dashboard() {
               <div style={s.revPanel}>
                 <div style={s.panelTitle}>🖼️ Image (Figma UX)</div>
                 <p style={{fontSize:'0.7rem',color:'#666',marginBottom:'0.75rem'}}>Upload design screenshots</p>
+
+                {/* Quick add image */}
+                <div style={{marginBottom:'1rem', padding:'0.75rem', background:'#1a1a1a', borderRadius:'8px'}}>
+                  <input type="text" id="quickImageUrl" placeholder="Image URL" style={{width:'100%', padding:'8px', background:'#111', border:'1px solid #333', borderRadius:'4px', color:'#fff', fontSize:'12px', marginBottom:'0.5rem'}} />
+                  <select id="quickImageRev" style={{padding:'6px', background:'#111', border:'1px solid #333', borderRadius:'4px', color:'#fff', fontSize:'12px', width:'100%', marginBottom:'0.5rem'}}>
+                    <option value="">Select revision...</option>
+                    {milestoneRevisions.map(r => (<option key={r.id} value={r.id}>{r.title}</option>))}
+                  </select>
+                  <button onClick={() => {
+                    const revId = parseInt((document.getElementById('quickImageRev') as HTMLSelectElement).value)
+                    const url = (document.getElementById('quickImageUrl') as HTMLInputElement).value
+                    if (revId && url) { saveQuickImage(revId, url) }
+                  }} style={{padding:'6px 12px', background:'#6366f1', color:'#fff', border:'none', borderRadius:'4px', cursor:'pointer', fontSize:'12px', width:'100%'}}>Add Image URL</button>
+                </div>
+
                 {milestoneRevisions.map(r => (
                   <div key={r.id} style={{marginBottom:'1rem'}}>
                     <div style={{fontWeight:'600',marginBottom:'0.5rem',fontSize:'0.875rem'}}>{r.title}</div>
@@ -418,6 +465,20 @@ export default function Dashboard() {
               </div>
               <div style={s.revPanel}>
                 <div style={s.panelTitle}>📝 Notes</div>
+
+                {/* Quick add note */}
+                <div style={{marginBottom:'1rem', padding:'0.75rem', background:'#1a1a1a', borderRadius:'8px'}}>
+                  <select id="quickNoteRev" style={{padding:'6px', background:'#111', border:'1px solid #333', borderRadius:'4px', color:'#fff', fontSize:'12px', width:'100%', marginBottom:'0.5rem'}}>
+                    <option value="">Select revision...</option>
+                    {milestoneRevisions.map(r => (<option key={r.id} value={r.id}>{r.title}</option>))}
+                  </select>
+                  <textarea id="quickNoteText" placeholder="Type your note here..." style={{width:'100%', padding:'8px', background:'#111', border:'1px solid #333', borderRadius:'4px', color:'#fff', fontSize:'12px', marginBottom:'0.5rem', minHeight:'60px'}} />
+                  <button onClick={() => {
+                    const revId = parseInt((document.getElementById('quickNoteRev') as HTMLSelectElement).value)
+                    const note = (document.getElementById('quickNoteText') as HTMLTextAreaElement).value
+                    if (revId && note) { saveQuickNote(revId, note) }
+                  }} style={{padding:'6px 12px', background:'#6366f1', color:'#fff', border:'none', borderRadius:'4px', cursor:'pointer', fontSize:'12px', width:'100%'}}>Add Note</button>
+                </div>
                 {milestoneRevisions.map(r => (
                   <div key={r.id} style={{...s.revCard, borderLeftColor:r.status==='done'?'#10b981':r.priority==='high'?'#ef4444':'#6366f1'}}>
                     <div style={{display:'flex',alignItems:'center',gap:'0.5rem',marginBottom:'0.5rem'}}>
