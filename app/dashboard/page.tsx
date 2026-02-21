@@ -443,11 +443,27 @@ export default function Dashboard() {
                     <option value="">Select revision...</option>
                     {milestoneRevisions.map(r => (<option key={r.id} value={r.id}>{r.title}</option>))}
                   </select>
-                  <button onClick={() => {
-                    const revId = parseInt((document.getElementById('quickImageRev') as HTMLSelectElement).value)
-                    const url = (document.getElementById('quickImageUrl') as HTMLInputElement).value
-                    if (revId && url) { saveQuickImage(revId, url) }
-                  }} style={{padding:'6px 12px', background:'#6366f1', color:'#fff', border:'none', borderRadius:'4px', cursor:'pointer', fontSize:'12px', width:'100%'}}>Add Image URL</button>
+                  <div style={{display:'flex', gap:'0.5rem'}}>
+                    <button onClick={() => {
+                      const revId = parseInt((document.getElementById('quickImageRev') as HTMLSelectElement).value)
+                      const url = (document.getElementById('quickImageUrl') as HTMLInputElement).value
+                      if (revId && url) { saveQuickImage(revId, url) }
+                    }} style={{flex:1, padding:'6px 12px', background:'#6366f1', color:'#fff', border:'none', borderRadius:'4px', cursor:'pointer', fontSize:'12px'}}>Add URL</button>
+                    <input type="file" id="quickImageFile" accept="image/*" onChange={async (e) => {
+                      const file = e.target.files?.[0]
+                      const revId = parseInt((document.getElementById('quickImageRev') as HTMLSelectElement).value)
+                      if (!file || !revId) { alert('Select a revision first'); return }
+                      try {
+                        const fileName = `${Date.now()}_${file.name}`
+                        const { error } = await supabase.storage.from('project-files').upload(fileName, file)
+                        if (error) { alert('Error: ' + error.message); return }
+                        const { data: { publicUrl } } = supabase.storage.from('project-files').getPublicUrl(fileName)
+                        await supabase.from('revisions').update({ image_url: publicUrl }).eq('id', revId)
+                        setRevisions(revisions.map(r => r.id === revId ? { ...r, image_url: publicUrl } : r))
+                      } catch { alert('Error uploading') }
+                    }} style={{display:'none'}} />
+                    <button onClick={() => document.getElementById('quickImageFile')?.click()} style={{flex:1, padding:'6px 12px', background:'#333', color:'#fff', border:'none', borderRadius:'4px', cursor:'pointer', fontSize:'12px'}}>📎 Upload</button>
+                  </div>
                 </div>
 
                 {milestoneRevisions.map(r => (
