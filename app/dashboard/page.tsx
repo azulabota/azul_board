@@ -166,6 +166,11 @@ export default function Dashboard() {
 
   const deleteRevision = async (id: number) => { await supabase.from('revisions').delete().eq('id', id); setRevisions(revisions.filter(r => r.id !== id)) }
 
+  const publishRevision = async (id: number) => {
+    await supabase.from('revisions').update({ status: 'published' }).eq('id', id)
+    setRevisions(revisions.map(r => r.id === id ? { ...r, status: 'published' } : r))
+  }
+
   const saveCodeEdit = async (id: number) => {
     await supabase.from('revisions').update({ code_snippet: editCodeSnippet, file_name: editFileName }).eq('id', id)
     setRevisions(revisions.map(r => r.id === id ? { ...r, code_snippet: editCodeSnippet, file_name: editFileName } : r))
@@ -500,7 +505,7 @@ export default function Dashboard() {
                     )}
                     <div style={{fontSize:'0.75rem',color:'#666',marginTop:'0.5rem'}}>👤 {r.created_by} → {r.assignee}</div>
                     <select value={r.status} onChange={e => updateRevisionStatus(r.id, e.target.value)} style={{marginTop:'0.5rem',padding:'4px',background:'#222',color:'#fff',border:'none',borderRadius:'4px',fontSize:'12px'}}>
-                      <option value="todo">To Do</option><option value="in_progress">In Progress</option><option value="done">Done</option>
+                      <option value="todo">To Do</option><option value="in_progress">In Progress</option><option value="done">Done</option><option value="published">Published</option>
                     </select>
                   </div>
                 ))}
@@ -516,10 +521,12 @@ export default function Dashboard() {
                 ) : (
                   revisions.map(r => (
                     <div key={r.id} onClick={() => setSelectedRevision(r.id)} style={{padding:'0.75rem', background:'#111', borderRadius:'6px', border:'1px solid #333', cursor:'pointer', display:'flex', alignItems:'center', gap:'0.75rem'}}>
-                      <span style={{padding:'2px 6px', borderRadius:'4px', fontSize:'10px', background:r.status==='done'?'#10b981':r.status==='in_progress'?'#f59e0b':'#6366f1', color:'#fff'}}>{r.status}</span>
+                      <span style={{padding:'2px 6px', borderRadius:'4px', fontSize:'10px', background:r.status==='published'?'#059669':r.status==='done'?'#10b981':r.status==='in_progress'?'#f59e0b':'#6366f1', color:'#fff'}}>{r.status}</span>
                       <span style={{flex:1, fontWeight:'500', fontSize:'0.875rem'}}>{r.title}</span>
                       <span style={{fontSize:'0.75rem', color:'#666'}}>{r.assignee}</span>
                       <span style={{fontSize:'0.7rem', color:'#444'}}>{r.created_at ? new Date(r.created_at).toLocaleDateString() : ''}</span>
+                      <button onClick={(e) => { e.stopPropagation(); publishRevision(r.id) }} style={{padding:'4px 8px', background:r.status==='published'?'#059669':'#10b981', color:'#fff', border:'none', borderRadius:'4px', cursor:'pointer', fontSize:'10px'}}>{r.status==='published'?'✓ Published':'Publish'}</button>
+                      <button onClick={(e) => { e.stopPropagation(); if(confirm('Delete this revision?')) deleteRevision(r.id) }} style={{padding:'4px 8px', background:'#dc2626', color:'#fff', border:'none', borderRadius:'4px', cursor:'pointer', fontSize:'10px'}}>✕</button>
                     </div>
                   ))
                 )}
