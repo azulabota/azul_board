@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 interface Milestone { id: number; title: string }
 interface Task { id: number; milestone_id: number; title: string; status: string; priority: string; assignee: string; description: string; created_by: string }
 interface File { id: number; milestone_id: number; name: string; url: string }
-interface Revision { id: number; milestone_id: number; title: string; code_snippet: string; file_name: string; description: string; priority: string; status: string; assignee: string; created_by: string }
+interface Revision { id: number; milestone_id: number; title: string; code_snippet: string; file_name: string; image_url: string; description: string; priority: string; status: string; assignee: string; created_by: string }
 
 export default function Dashboard() {
   const router = useRouter()
@@ -38,6 +38,13 @@ export default function Dashboard() {
   const [newRevisionAssignee, setNewRevisionAssignee] = useState('')
   const [editingNoteId, setEditingNoteId] = useState<number | null>(null)
   const [editNoteText, setEditNoteText] = useState('')
+  const [editingCodeId, setEditingCodeId] = useState<number | null>(null)
+  const [editCodeSnippet, setEditCodeSnippet] = useState('')
+  const [editFileName, setEditFileName] = useState('')
+  const [editingImageId, setEditingImageId] = useState<number | null>(null)
+  const [editImageUrl, setEditImageUrl] = useState('')
+  const codeInputRef = useRef<HTMLInputElement>(null)
+  const imageInputRef = useRef<HTMLInputElement>(null)
   const PRIORITY_COLORS: Record<string, string> = { high: '#ef4444', medium: '#f59e0b', low: '#10b981' }
 
   useEffect(() => { checkUser() }, [])
@@ -157,6 +164,31 @@ export default function Dashboard() {
   }
 
   const deleteRevision = async (id: number) => { await supabase.from('revisions').delete().eq('id', id); setRevisions(revisions.filter(r => r.id !== id)) }
+
+  const saveCodeEdit = async (id: number) => {
+    await supabase.from('revisions').update({ code_snippet: editCodeSnippet, file_name: editFileName }).eq('id', id)
+    setRevisions(revisions.map(r => r.id === id ? { ...r, code_snippet: editCodeSnippet, file_name: editFileName } : r))
+    setEditingCodeId(null)
+  }
+
+  const saveImageEdit = async (id: number) => {
+    await supabase.from('revisions').update({ image_url: editImageUrl }).eq('id', id)
+    setRevisions(revisions.map(r => r.id === id ? { ...r, image_url: editImageUrl } : r))
+    setEditingImageId(null)
+  }
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, revisionId: number) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    try {
+      const fileName = `${Date.now()}_${file.name}`
+      const { error } = await supabase.storage.from('project-files').upload(fileName, file)
+      if (error) { alert('Error: ' + error.message); return }
+      const { data: { publicUrl } } = supabase.storage.from('project-files').getPublicUrl(fileName)
+      await supabase.from('revisions').update({ image_url: publicUrl }).eq('id', revisionId)
+      setRevisions(revisions.map(r => r.id === revisionId ? { ...r, image_url: publicUrl } : r))
+    } catch { alert('Error uploading') }
+  }
 
   const milestoneTasks = tasks.filter(t => t.milestone_id === selectedMilestone)
   const milestoneFiles = files.filter(f => f.milestone_id === selectedMilestone)
@@ -325,12 +357,61 @@ export default function Dashboard() {
             <div style={s.revContainer}>
               <div style={s.revPanel}>
                 <div style={s.panelTitle}>💻 Code</div>
-                {milestoneRevisions.map(r => (<div key={r.id} style={{...s.revCard, borderLeftColor:r.priority==='high'?'#ef4444':r.priority==='medium'?'#f59e0b':'#10b981'}}><div style={{fontWeight:'600',marginBottom:'0.25rem'}}>{r.title}</div><div style={{fontSize:'0.75rem',color:'#666',marginBottom:'0.5rem'}}>{r.file_name}</div>{r.code_snippet && <pre style={{background:'#000',padding:'0.5rem',borderRadius:'4px',fontSize:'10px',overflow:'auto',maxHeight:'150px'}}>{r.code_snippet.slice(0,300)}</pre>}</div>))}
+                {milestoneRevisions.map(r => (
+                  <div key={r.id} style={{...s.revCard, borderLeftColor:r.priority==='high'?'#ef4444':r.priority==='medium'?'#f59e0b':'#10b981'}}>
+                    <div style={{fontWeight:'600',marginBottom:'0.5rem'}}>{r.title}</div>
+                    {editingCodeId === r.id ? (
+                      <div onClick={e => e.stopPropagation()}>
+                        <input type="text" placeholder="File name (e.g. App.tsx)" value={editFileName} onChange={e => setEditFileName(e.target.value)} style={{width:'100%', padding:'6px', background:'#000', border:'1px solid #444', borderRadius:'4px', color:'#fff', fontSize:'12px', marginBottom:'0.5rem'}} />
+                        <textarea placeholder="Paste code here..." value={editCodeSnippet} onChange={e => setEditCodeSnippet(e.target.value)} style={{width:'100%', padding:'6px', background:'#000', border:'1px solid #444', borderRadius:'4px', color:'#fff', fontSize:'11px', marginBottom:'0.5rem', minHeight:'80px', fontFamily:'monospace'}} />
+                        <div style={{display:'flex', gap:'0.5rem'}}>
+                          <button onClick={() => saveCodeEdit(r.id)} style={{padding:'4px 8px', background:'#10b981', color:'#fff', border:'none', borderRadius:'4px', cursor:'pointer', fontSize:'12px'}}>Save</button>
+                          <button onClick={() => setEditingCodeId(null)} style={{padding:'4px 8px', background:'#666', color:'#fff', border:'none', borderRadius:'4px', cursor:'pointer', fontSize:'12px'}}>Cancel</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div style={{fontSize:'0.75rem',color:'#666',marginBottom:'0.5rem'}}>{r.file_name || 'No file name'}</div>
+                        {r.code_snippet ? (
+                          <pre style={{background:'#000',padding:'0.5rem',borderRadius:'4px',fontSize:'10px',overflow:'auto',maxHeight:'150px',marginBottom:'0.5rem'}}>{r.code_snippet.slice(0,500)}</pre>
+                        ) : (
+                          <div style={{fontSize:'0.75rem',color:'#444',marginBottom:'0.5rem',fontStyle:'italic'}}>No code yet</div>
+                        )}
+                        <button onClick={() => { setEditingCodeId(r.id); setEditCodeSnippet(r.code_snippet || ''); setEditFileName(r.file_name || '') }} style={{padding:'4px 8px', background:'#333', color:'#fff', border:'none', borderRadius:'4px', cursor:'pointer', fontSize:'11px', marginRight:'0.5rem'}}>✏️ Edit</button>
+                      </>
+                    )}
+                  </div>
+                ))}
               </div>
               <div style={s.revPanel}>
                 <div style={s.panelTitle}>🖼️ View</div>
-                <p style={{fontSize:'0.75rem',color:'#666',marginBottom:'1rem'}}>Upload screenshots from Figma manually</p>
-                {milestoneRevisions.map(r => (<div key={r.id} style={{marginBottom:'1rem'}}><div style={{fontWeight:'600',marginBottom:'0.5rem',fontSize:'0.875rem'}}>{r.title}</div><div style={{fontSize:'0.75rem',color:'#666'}}>Upload screenshot here</div></div>))}
+                {milestoneRevisions.map(r => (
+                  <div key={r.id} style={{marginBottom:'1rem'}}>
+                    <div style={{fontWeight:'600',marginBottom:'0.5rem',fontSize:'0.875rem'}}>{r.title}</div>
+                    {editingImageId === r.id ? (
+                      <div onClick={e => e.stopPropagation()}>
+                        <input type="text" placeholder="Image URL" value={editImageUrl} onChange={e => setEditImageUrl(e.target.value)} style={{width:'100%', padding:'6px', background:'#000', border:'1px solid #444', borderRadius:'4px', color:'#fff', fontSize:'12px', marginBottom:'0.5rem'}} />
+                        <div style={{fontSize:'0.7rem',color:'#666',marginBottom:'0.5rem'}}>Or upload:</div>
+                        <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, r.id)} style={{marginBottom:'0.5rem'}} ref={imageInputRef} />
+                        <div style={{display:'flex', gap:'0.5rem'}}>
+                          <button onClick={() => saveImageEdit(r.id)} style={{padding:'4px 8px', background:'#10b981', color:'#fff', border:'none', borderRadius:'4px', cursor:'pointer', fontSize:'12px'}}>Save</button>
+                          <button onClick={() => setEditingImageId(null)} style={{padding:'4px 8px', background:'#666', color:'#fff', border:'none', borderRadius:'4px', cursor:'pointer', fontSize:'12px'}}>Cancel</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        {r.image_url ? (
+                          <div style={{marginBottom:'0.5rem'}}>
+                            <img src={r.image_url} alt="Screenshot" style={{width:'100%', borderRadius:'4px', border:'1px solid #333'}} />
+                          </div>
+                        ) : (
+                          <div style={{fontSize:'0.75rem',color:'#666',marginBottom:'0.5rem',padding:'1rem',background:'#0a0a0a',borderRadius:'4px',textAlign:'center'}}>No image yet</div>
+                        )}
+                        <button onClick={() => { setEditingImageId(r.id); setEditImageUrl(r.image_url || '') }} style={{padding:'4px 8px', background:'#333', color:'#fff', border:'none', borderRadius:'4px', cursor:'pointer', fontSize:'11px'}}>🖼️ {r.image_url ? 'Change' : 'Add'} Image</button>
+                      </>
+                    )}
+                  </div>
+                ))}
               </div>
               <div style={s.revPanel}>
                 <div style={s.panelTitle}>📝 Notes</div>
