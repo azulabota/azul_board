@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [firstName, setFirstName] = useState('')
   const [isSignUp, setIsSignUp] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -18,8 +19,23 @@ export default function LoginPage() {
 
     try {
       if (isSignUp) {
-        const { error } = await supabase.auth.signUp({ email, password })
+        const { data, error } = await supabase.auth.signUp({ 
+          email, 
+          password,
+          options: {
+            data: { first_name: firstName }
+          }
+        })
         if (error) throw error
+        
+        // Create profile
+        if (data.user) {
+          await supabase.from('profiles').insert({
+            id: data.user.id,
+            email: email,
+            first_name: firstName
+          })
+        }
         alert('Check your email for the confirmation link!')
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password })
@@ -39,6 +55,15 @@ export default function LoginPage() {
         <h1>Sapien Eleven Dashboard</h1>
         <form onSubmit={handleAuth}>
           {error && <div className="error">{error}</div>}
+          {isSignUp && (
+            <input
+              type="text"
+              placeholder="First Name"
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
+              required
+            />
+          )}
           <input
             type="email"
             placeholder="Email"

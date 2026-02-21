@@ -7,6 +7,7 @@ interface Milestone { id: number; title: string }
 interface Task { id: number; milestone_id: number; title: string; status: string; priority: string; assignee: string; description: string; created_by: string }
 interface File { id: number; milestone_id: number; name: string; url: string }
 interface Revision { id: number; milestone_id: number; title: string; code_snippet: string; file_name: string; image_url: string; description: string; priority: string; status: string; assignee: string; created_by: string; created_at?: string }
+interface Profile { id: string; email: string; first_name: string }
 
 export default function Dashboard() {
   const router = useRouter()
@@ -19,6 +20,7 @@ export default function Dashboard() {
   const [tasks, setTasks] = useState<Task[]>([])
   const [files, setFiles] = useState<File[]>([])
   const [revisions, setRevisions] = useState<Revision[]>([])
+  const [profiles, setProfiles] = useState<Profile[]>([])
   const [newMilestone, setNewMilestone] = useState('')
   const [editingMilestone, setEditingMilestone] = useState<number | null>(null)
   const [editMilestoneTitle, setEditMilestoneTitle] = useState('')
@@ -57,16 +59,18 @@ export default function Dashboard() {
 
   const fetchData = async () => {
     setLoading(true)
-    const [msRes, tasksRes, filesRes, revsRes] = await Promise.all([
+    const [msRes, tasksRes, filesRes, revsRes, profilesRes] = await Promise.all([
       supabase.from('milestones').select('*').order('created_at', { ascending: true }),
       supabase.from('tasks').select('*'),
       supabase.from('files').select('*'),
-      supabase.from('revisions').select('*').order('created_at', { ascending: false })
+      supabase.from('revisions').select('*').order('created_at', { ascending: false }),
+      supabase.from('profiles').select('*')
     ])
     if (msRes.data) setMilestones(msRes.data)
     if (tasksRes.data) setTasks(tasksRes.data)
     if (filesRes.data) setFiles(filesRes.data)
     if (revsRes.data) setRevisions(revsRes.data)
+    if (profilesRes.data) setProfiles(profilesRes.data)
     if (msRes.data?.length && !selectedMilestone) setSelectedMilestone(msRes.data[0].id)
     setLoading(false)
   }
@@ -222,7 +226,10 @@ export default function Dashboard() {
       <textarea placeholder="Description" value={newTaskDesc[status] || ''} onChange={e => setNewTaskDesc({ ...newTaskDesc, [status]: e.target.value })} style={{width:'100%', padding:'8px', background:'#111', border:'1px solid #333', borderRadius:'4px', color:'#fff', fontSize:'12px', marginBottom:'0.5rem', minHeight:'40px'}} />
       <div style={{display:'flex', gap:'0.5rem'}}>
         <select value={newTaskPriority[status] || 'medium'} onChange={e => setNewTaskPriority({ ...newTaskPriority, [status]: e.target.value })} style={{padding:'6px', background:'#111', border:'1px solid #333', borderRadius:'4px', color:'#fff', fontSize:'12px'}}><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select>
-        <input type="text" placeholder="Assign to..." value={newTaskAssignee[status] || ''} onChange={e => setNewTaskAssignee({ ...newTaskAssignee, [status]: e.target.value })} style={{flex:1, padding:'6px', background:'#111', border:'1px solid #333', borderRadius:'4px', color:'#fff', fontSize:'12px'}} />
+        <select value={newTaskAssignee[status] || ''} onChange={e => setNewTaskAssignee({ ...newTaskAssignee, [status]: e.target.value })} style={{flex:1, padding:'6px', background:'#111', border:'1px solid #333', borderRadius:'4px', color:'#fff', fontSize:'12px'}}>
+          <option value="">Assign to...</option>
+          {profiles.map(p => (<option key={p.id} value={p.first_name}>{p.first_name}</option>))}
+        </select>
         <button onClick={() => addTask(status)} style={{padding:'6px 12px', background:'#6366f1', color:'#fff', border:'none', borderRadius:'4px', cursor:'pointer', fontSize:'12px'}}>Add</button>
       </div>
     </div>
@@ -372,7 +379,10 @@ export default function Dashboard() {
           <div>
             <div style={s.actionBar}>
               <input type="text" placeholder="Revision Name" value={newRevisionName} onChange={e => setNewRevisionName(e.target.value)} style={{...s.input, flex:1}} />
-              <input type="text" placeholder="Assign To..." value={newRevisionAssignee} onChange={e => setNewRevisionAssignee(e.target.value)} style={{...s.input, width:'150px'}} />
+              <select value={newRevisionAssignee} onChange={e => setNewRevisionAssignee(e.target.value)} style={{...s.input, width:'150px'}}>
+                <option value="">Assign to...</option>
+                {profiles.map(p => (<option key={p.id} value={p.first_name}>{p.first_name}</option>))}
+              </select>
               <button onClick={sendToDo} style={s.actionBtn}>Send to To Do</button>
             </div>
             <div style={s.revContainer}>
