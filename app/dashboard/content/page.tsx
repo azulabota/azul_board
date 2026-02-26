@@ -21,8 +21,7 @@ const CONTENT_TYPES = {
   health_tip: { label: 'Health Tip', color: '#10b981' }, // Green
   ai_health: { label: 'AI + Health', color: '#3b82f6' }, // Blue
   nighttime_reflection: { label: 'Nighttime Reflection', color: '#6366f1' }, // Indigo
-  short_form: { label: 'Short Form', color: '#64748b' }, // Slate
-  topic_pipeline: { label: 'Topic Pipeline', color: '#ef4444' } // Red
+  short_form: { label: 'Short Form', color: '#64748b' } // Slate
 }
 
 export default function ContentCalendar() {
@@ -73,7 +72,6 @@ export default function ContentCalendar() {
     if (items.some(i => i.type === 'health_tip')) return CONTENT_TYPES.health_tip.color
     if (items.some(i => i.type === 'ai_health')) return CONTENT_TYPES.ai_health.color
     if (items.some(i => i.type === 'nighttime_reflection')) return CONTENT_TYPES.nighttime_reflection.color
-    if (items.some(i => i.type === 'topic_pipeline')) return CONTENT_TYPES.topic_pipeline.color
     return CONTENT_TYPES.short_form.color
   }
 
