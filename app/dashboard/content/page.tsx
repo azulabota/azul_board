@@ -29,6 +29,8 @@ export default function ContentCalendar() {
   const [contentItems, setContentItems] = useState<ContentItem[]>([])
   const [newItem, setNewItem] = useState({ title: '', type: 'short_form' as const, content: '', platform: 'X' })
   const [loading, setLoading] = useState(false)
+  const [viewMonth, setViewMonth] = useState(new Date().getMonth())
+  const [viewYear, setViewYear] = useState(new Date().getFullYear())
 
   useEffect(() => {
     fetch(`${SUPABASE_URL}/rest/v1/content?order=date.asc`, {
@@ -42,12 +44,9 @@ export default function ContentCalendar() {
     .catch(console.error)
   }, [])
 
-  // Generate calendar days for current month
-  const today = new Date()
-  const currentMonth = today.getMonth()
-  const currentYear = today.getFullYear()
-  const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate()
-  const firstDayOfMonth = new Date(currentYear, currentMonth, 1).getDay()
+  // Generate calendar days for view month
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate()
+  const firstDayOfMonth = new Date(viewYear, viewMonth, 1).getDay()
 
   const days = []
   for (let i = 0; i < firstDayOfMonth; i++) {
@@ -58,7 +57,7 @@ export default function ContentCalendar() {
   }
 
   const getContentForDay = (day: number) => {
-    const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+    const dateStr = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
     return contentItems.filter(item => item.date === dateStr)
   }
 
@@ -131,8 +130,10 @@ export default function ContentCalendar() {
 
       {/* Calendar */}
       <div style={{ background: '#111', borderRadius: '12px', padding: '1rem', marginBottom: '1.5rem' }}>
-        <div style={{ textAlign: 'center', fontSize: '1.25rem', fontWeight: '600', marginBottom: '1rem' }}>
-          {months[currentMonth]} {currentYear}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+          <button onClick={() => { if (viewMonth === 0) { setViewMonth(11); setViewYear(viewYear - 1) } else { setViewMonth(viewMonth - 1) } }} style={{ background: '#333', border: 'none', color: '#fff', padding: '8px 12px', borderRadius: '4px', cursor: 'pointer' }}>←</button>
+          <span style={{ fontSize: '1.25rem', fontWeight: '600' }}>{months[viewMonth]} {viewYear}</span>
+          <button onClick={() => { if (viewMonth === 11) { setViewMonth(0); setViewYear(viewYear + 1) } else { setViewMonth(viewMonth + 1) } }} style={{ background: '#333', border: 'none', color: '#fff', padding: '8px 12px', borderRadius: '4px', cursor: 'pointer' }}>→</button>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '0.5rem', marginBottom: '0.5rem' }}>
           {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
@@ -143,11 +144,11 @@ export default function ContentCalendar() {
           {days.map((day, idx) => (
             <div
               key={idx}
-              onClick={() => day && setSelectedDate(`${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`)}
+              onClick={() => day && setSelectedDate(`${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`)}
               style={{
                 height: '60px',
-                background: selectedDate === `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}` ? '#1a1a1a' : '#0a0a0a',
-                border: selectedDate === `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}` ? '1px solid #333' : '1px solid transparent',
+                background: selectedDate === `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}` ? '#1a1a1a' : '#0a0a0a',
+                border: selectedDate === `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}` ? '1px solid #333' : '1px solid transparent',
                 borderRadius: '8px',
                 padding: '0.5rem',
                 cursor: day ? 'pointer' : 'default',
