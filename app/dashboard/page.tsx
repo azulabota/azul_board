@@ -327,6 +327,15 @@ export default function Dashboard() {
             <button onClick={addMilestone} style={s.addBtn}>+ Add Milestone</button>
           </>
         )}
+        <button onClick={() => {
+          if (activeView === 'content') {
+            setActiveView('dashboard')
+          } else {
+            setActiveView('content')
+          }
+        }} style={{...s.logoutBtn, background: activeView === 'content' ? '#6366f1' : '#333', marginBottom: '0.5rem'}}>
+          {sidebarCollapsed ? (activeView === 'content' ? '📋' : '📅') : (activeView === 'content' ? '← Dashboard' : '📅 Content')}
+        </button>
         <button onClick={handleLogout} style={s.logoutBtn}>{sidebarCollapsed ? '⬜' : 'Logout'}</button>
       </div>
 
@@ -336,7 +345,6 @@ export default function Dashboard() {
           <button onClick={() => setActiveView('dashboard')} style={activeView === 'dashboard' ? {...s.viewTab, ...s.viewTabActive} : s.viewTab}>Dashboard</button>
           <button onClick={() => setActiveView('files')} style={activeView === 'files' ? {...s.viewTab, ...s.viewTabActive} : s.viewTab}>Files</button>
           <button onClick={() => setActiveView('revisions')} style={activeView === 'revisions' ? {...s.viewTab, ...s.viewTabActive} : s.viewTab}>Revisions</button>
-          <button onClick={() => setActiveView('content')} style={activeView === 'content' ? {...s.viewTab, ...s.viewTabActive} : s.viewTab}>Content</button>
         </div>
 
         {activeView === 'dashboard' && (
