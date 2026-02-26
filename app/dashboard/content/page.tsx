@@ -8,7 +8,7 @@ interface ContentItem {
   id: number
   date: string
   title: string
-  type: 'article' | 'long_form' | 'am_motivation' | 'health_tip' | 'ai_health' | 'nighttime_reflection' | 'short_form' | 'topic_pipeline'
+  type: 'article' | 'long_form' | 'am_motivation' | 'health_tip' | 'ai_health' | 'nighttime_reflection' | 'short_form' | 'topic_pipeline' | string
   content: string
   status: 'scheduled' | 'posted' | 'draft'
   platform: string
@@ -21,7 +21,8 @@ const CONTENT_TYPES = {
   health_tip: { label: 'Health Tip', color: '#10b981' }, // Green
   ai_health: { label: 'AI + Health', color: '#3b82f6' }, // Blue
   nighttime_reflection: { label: 'Nighttime Reflection', color: '#6366f1' }, // Indigo
-  short_form: { label: 'Short Form', color: '#64748b' } // Slate
+  short_form: { label: 'Short Form', color: '#64748b' }, // Slate
+  topic_pipeline: { label: 'Topic Pipeline', color: '#ef4444' } // Red (fallback)
 }
 
 export default function ContentCalendar() {
@@ -160,7 +161,7 @@ export default function ContentCalendar() {
                   {getContentForDay(day).length > 0 && (
                     <div style={{ position: 'absolute', bottom: '4px', left: '4px', right: '4px', display: 'flex', gap: '2px' }}>
                       {getContentForDay(day).slice(0, 3).map((item, i) => (
-                        <div key={i} style={{ flex: 1, height: '4px', borderRadius: '2px', background: CONTENT_TYPES[item.type].color }} />
+                        <div key={i} style={{ flex: 1, height: '4px', borderRadius: '2px', background: CONTENT_TYPES[item.type as keyof typeof CONTENT_TYPES]?.color || '#64748b' }} />
                       ))}
                     </div>
                   )}
@@ -238,11 +239,11 @@ export default function ContentCalendar() {
               <div style={{ color: '#666', textAlign: 'center', padding: '2rem' }}>No content scheduled for this day</div>
             ) : (
               getContentForDay(parseInt(selectedDate.split('-')[2])).map(item => (
-                <div key={item.id} style={{ background: '#0a0a0a', borderRadius: '8px', padding: '1rem', marginBottom: '0.5rem', borderLeft: `3px solid ${CONTENT_TYPES[item.type].color}` }}>
+                <div key={item.id} style={{ background: '#0a0a0a', borderRadius: '8px', padding: '1rem', marginBottom: '0.5rem', borderLeft: `3px solid ${(CONTENT_TYPES as any)[item.type]?.color || '#64748b'}` }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
                     <div style={{ fontWeight: '600' }}>{item.title}</div>
-                    <span style={{ fontSize: '0.7rem', padding: '2px 6px', borderRadius: '4px', background: CONTENT_TYPES[item.type].color + '20', color: CONTENT_TYPES[item.type].color }}>
-                      {CONTENT_TYPES[item.type].label}
+                    <span style={{ fontSize: '0.7rem', padding: '2px 6px', borderRadius: '4px', background: (CONTENT_TYPES as any)[item.type]?.color + '20', color: (CONTENT_TYPES as any)[item.type]?.color }}>
+                      {(CONTENT_TYPES as any)[item.type]?.label || 'Post'}
                     </span>
                   </div>
                   {item.content && <div style={{ fontSize: '0.875rem', color: '#888', marginBottom: '0.5rem' }}>{item.content}</div>}
