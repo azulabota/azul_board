@@ -21,6 +21,7 @@ const CONTENT_TYPES = {
   health_tip: { label: 'Health Tip', color: '#10b981' }, // Green
   ai_health: { label: 'AI + Health', color: '#3b82f6' }, // Blue
   nighttime_reflection: { label: 'Nighttime Reflection', color: '#6366f1' }, // Indigo
+  daily_wellness_reminder: { label: 'Daily Wellness Reminder', color: '#14b8a6' }, // Teal
   short_form: { label: 'Short Form', color: '#64748b' } // Slate
 }
 
@@ -69,6 +70,7 @@ export default function ContentCalendar() {
     if (items.some(i => i.type === 'long_form')) return CONTENT_TYPES.long_form.color
     if (items.some(i => i.type === 'am_motivation')) return CONTENT_TYPES.am_motivation.color
     if (items.some(i => i.type === 'health_tip')) return CONTENT_TYPES.health_tip.color
+    if (items.some(i => i.type === 'daily_wellness_reminder')) return CONTENT_TYPES.daily_wellness_reminder.color
     if (items.some(i => i.type === 'ai_health')) return CONTENT_TYPES.ai_health.color
     if (items.some(i => i.type === 'nighttime_reflection')) return CONTENT_TYPES.nighttime_reflection.color
     return CONTENT_TYPES.short_form.color
@@ -203,7 +205,7 @@ export default function ContentCalendar() {
                 onChange={e => setNewItem({ ...newItem, type: e.target.value as any })}
                 style={{ flex: 1, padding: '0.5rem', background: '#000', border: '1px solid #333', borderRadius: '4px', color: '#fff' }}
               >
-                {Object.entries(CONTENT_TYPES).filter(([key]) => key !== 'short_form').map(([key, val]) => (
+                {Object.entries(CONTENT_TYPES).filter(([key]) => !['short_form', 'topic_pipeline'].includes(key)).map(([key, val]) => (
                   <option key={key} value={key}>{val.label}</option>
                 ))}
               </select>
