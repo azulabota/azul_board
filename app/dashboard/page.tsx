@@ -15,7 +15,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [milestones, setMilestones] = useState<Milestone[]>([])
   const [selectedMilestone, setSelectedMilestone] = useState<number | null>(null)
-  const [activeView, setActiveView] = useState<'dashboard' | 'files' | 'revisions'>('dashboard')
+  const [activeView, setActiveView] = useState<'dashboard' | 'files' | 'revisions' | 'content'>('dashboard')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [tasks, setTasks] = useState<Task[]>([])
   const [files, setFiles] = useState<File[]>([])
@@ -336,6 +336,7 @@ export default function Dashboard() {
           <button onClick={() => setActiveView('dashboard')} style={activeView === 'dashboard' ? {...s.viewTab, ...s.viewTabActive} : s.viewTab}>Dashboard</button>
           <button onClick={() => setActiveView('files')} style={activeView === 'files' ? {...s.viewTab, ...s.viewTabActive} : s.viewTab}>Files</button>
           <button onClick={() => setActiveView('revisions')} style={activeView === 'revisions' ? {...s.viewTab, ...s.viewTabActive} : s.viewTab}>Revisions</button>
+          <button onClick={() => setActiveView('content')} style={activeView === 'content' ? {...s.viewTab, ...s.viewTabActive} : s.viewTab}>Content</button>
         </div>
 
         {activeView === 'dashboard' && (
@@ -372,6 +373,12 @@ export default function Dashboard() {
               {milestoneFiles.map(f => (<div key={f.id} style={s.fileCard}><p style={{fontWeight:'500',marginBottom:'0.5rem'}}>{f.name}</p>{f.url && <a href={f.url} target="_blank" rel="noopener" style={{color:'#6366f1'}}>Download</a>}</div>))}
               {milestoneFiles.length === 0 && <p style={s.emptyText}>No files yet</p>}
             </div>
+          </div>
+        )}
+
+        {activeView === 'content' && (
+          <div style={{padding:'1rem'}}>
+            <iframe src="/dashboard/content" style={{width:'100%', height:'80vh', border:'none', borderRadius:'8px'}} title="Content Calendar" />
           </div>
         )}
 
