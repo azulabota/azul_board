@@ -8,17 +8,21 @@ interface ContentItem {
   id: number
   date: string
   title: string
-  type: 'article' | 'long_form' | 'short_form' | 'topic_pipeline'
+  type: 'article' | 'long_form' | 'am_motivation' | 'health_tip' | 'ai_health' | 'nighttime_reflection' | 'short_form' | 'topic_pipeline'
   content: string
   status: 'scheduled' | 'posted' | 'draft'
   platform: string
 }
 
 const CONTENT_TYPES = {
-  article: { label: 'Article', color: '#8b5cf6' },
-  long_form: { label: 'Long Form', color: '#3b82f6' },
-  short_form: { label: 'Short Form', color: '#10b981' },
-  topic_pipeline: { label: 'Topic Pipeline', color: '#f59e0b' }
+  article: { label: 'Article', color: '#ec4899' },        // Pink
+  long_form: { label: 'Long Form', color: '#8b5cf6' }, // Purple
+  am_motivation: { label: 'AM Motivation', color: '#f59e0b' }, // Amber
+  health_tip: { label: 'Health Tip', color: '#10b981' }, // Green
+  ai_health: { label: 'AI + Health', color: '#3b82f6' }, // Blue
+  nighttime_reflection: { label: 'Nighttime Reflection', color: '#6366f1' }, // Indigo
+  short_form: { label: 'Short Form', color: '#64748b' }, // Slate
+  topic_pipeline: { label: 'Topic Pipeline', color: '#ef4444' } // Red
 }
 
 export default function ContentCalendar() {
@@ -62,10 +66,15 @@ export default function ContentCalendar() {
   const getDayColor = (day: number) => {
     const items = getContentForDay(day)
     if (items.length === 0) return 'transparent'
+    // Priority: article > long_form > am_motivation > health_tip > ai_health > nighttime > topic
     if (items.some(i => i.type === 'article')) return CONTENT_TYPES.article.color
     if (items.some(i => i.type === 'long_form')) return CONTENT_TYPES.long_form.color
-    if (items.some(i => i.type === 'short_form')) return CONTENT_TYPES.short_form.color
-    return CONTENT_TYPES.topic_pipeline.color
+    if (items.some(i => i.type === 'am_motivation')) return CONTENT_TYPES.am_motivation.color
+    if (items.some(i => i.type === 'health_tip')) return CONTENT_TYPES.health_tip.color
+    if (items.some(i => i.type === 'ai_health')) return CONTENT_TYPES.ai_health.color
+    if (items.some(i => i.type === 'nighttime_reflection')) return CONTENT_TYPES.nighttime_reflection.color
+    if (items.some(i => i.type === 'topic_pipeline')) return CONTENT_TYPES.topic_pipeline.color
+    return CONTENT_TYPES.short_form.color
   }
 
   const addContent = async () => {
@@ -195,7 +204,7 @@ export default function ContentCalendar() {
                 onChange={e => setNewItem({ ...newItem, type: e.target.value as any })}
                 style={{ flex: 1, padding: '0.5rem', background: '#000', border: '1px solid #333', borderRadius: '4px', color: '#fff' }}
               >
-                {Object.entries(CONTENT_TYPES).map(([key, val]) => (
+                {Object.entries(CONTENT_TYPES).filter(([key]) => key !== 'short_form').map(([key, val]) => (
                   <option key={key} value={key}>{val.label}</option>
                 ))}
               </select>
