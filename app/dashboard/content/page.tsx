@@ -1,5 +1,8 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+
+const SUPABASE_URL = 'https://jkliztcyclhlqhnywnzq.supabase.co'
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImprbGl6dGN5Y2xobHFobnl3bnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE0NTkwODIsImV4cCI6MjA4NzAzNTA4Mn0.MCU6jZ5gbpNuZEOYgc_JnNtzC6of56ooeEdGVS70EUY'
 
 interface ContentItem {
   id: number
@@ -23,6 +26,18 @@ export default function ContentCalendar() {
   const [contentItems, setContentItems] = useState<ContentItem[]>([])
   const [newItem, setNewItem] = useState({ title: '', type: 'short_form' as const, content: '', platform: 'X' })
   const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    fetch(`${SUPABASE_URL}/rest/v1/content?order=date.asc`, {
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Authorization': `Bearer ${SUPABASE_KEY}`
+      }
+    })
+    .then(res => res.json())
+    .then(data => setContentItems(data || []))
+    .catch(console.error)
+  }, [])
 
   // Generate calendar days for current month
   const today = new Date()
@@ -57,18 +72,37 @@ export default function ContentCalendar() {
     if (!selectedDate || !newItem.title) return
     setLoading(true)
     
-    const item: ContentItem = {
-      id: Date.now(),
-      date: selectedDate,
-      title: newItem.title,
-      type: newItem.type,
-      content: newItem.content,
-      status: 'scheduled',
-      platform: newItem.platform
-    }
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/content`, {
+      method: 'POST',
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Authorization': `Bearer ${SUPABASE_KEY}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=minimal'
+      },
+      body: JSON.stringify({
+        title: newItem.title,
+        date: selectedDate,
+        type: newItem.type,
+        content: newItem.content,
+        status: 'scheduled',
+        platform: newItem.platform
+      })
+    })
     
-    setContentItems([...contentItems, item])
-    setNewItem({ title: '', type: 'short_form', content: '', platform: 'X' })
+    if (res.ok) {
+      const newItemWithId: ContentItem = {
+        id: Date.now(),
+        date: selectedDate,
+        title: newItem.title,
+        type: newItem.type,
+        content: newItem.content,
+        status: 'scheduled',
+        platform: newItem.platform
+      }
+      setContentItems([...contentItems, newItemWithId])
+      setNewItem({ title: '', type: 'short_form', content: '', platform: 'X' })
+    }
     setLoading(false)
   }
 
