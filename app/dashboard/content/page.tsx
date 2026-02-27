@@ -249,7 +249,10 @@ export default function ContentCalendar() {
                     </span>
                   </div>
                   {item.content && <div style={{ fontSize: '0.875rem', color: '#888', marginBottom: '0.5rem' }}>{item.content}</div>}
-                  <div style={{ fontSize: '0.75rem', color: '#666' }}>📱 {item.platform}</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ fontSize: '0.75rem', color: '#666' }}>📱 {item.platform}</div>
+                    <button onClick={() => { navigator.clipboard.writeText(item.content); alert('Copied!') }} style={{ fontSize: '0.7rem', padding: '4px 8px', background: '#333', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>📋 Copy</button>
+                  </div>
                 </div>
               ))
             )}
