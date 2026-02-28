@@ -22,7 +22,9 @@ const CONTENT_TYPES = {
   ai_health: { label: 'AI + Health', color: '#3b82f6' }, // Blue
   nighttime_reflection: { label: 'Nighttime Reflection', color: '#6366f1' }, // Indigo
   daily_wellness_reminder: { label: 'Daily Wellness Reminder', color: '#14b8a6' }, // Teal
-  short_form: { label: 'Short Form', color: '#64748b' } // Slate
+  short_form: { label: 'Short Form', color: '#64748b' }, // Slate
+  app_build: { label: 'App Build', color: '#ef4444' },   // Red
+  app_build_long: { label: 'App Build Long', color: '#f97316' } // Orange
 }
 
 export default function ContentCalendar() {
