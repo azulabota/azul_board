@@ -19,7 +19,7 @@ export default function LoginPage() {
 
     try {
       if (isSignUp) {
-        const { data, error } = await supabase.auth.signUp({ 
+        const { error } = await supabase.auth.signUp({ 
           email, 
           password,
           options: {
@@ -27,16 +27,7 @@ export default function LoginPage() {
           }
         })
         if (error) throw error
-        
-        // Create profile
-        if (data.user) {
-          await supabase.from('profiles').insert({
-            id: data.user.id,
-            email: email,
-            first_name: firstName
-          })
-        }
-        alert('Check your email for the confirmation link!')
+        alert('Check your email for the confirmation link. Your account will be pending admin approval after signup.')
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password })
         if (error) throw error

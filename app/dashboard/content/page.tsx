@@ -1,158 +1,259 @@
 'use client'
-import { useState, useEffect } from 'react'
 
-const SUPABASE_URL = 'https://jkliztcyclhlqhnywnzq.supabase.co'
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImprbGl6dGN5Y2xobHFobnl3bnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE0NTkwODIsImV4cCI6MjA4NzAzNTA4Mn0.MCU6jZ5gbpNuZEOYgc_JnNtzC6of56ooeEdGVS70EUY'
+import { useEffect, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { supabase } from '../../../lib/supabase'
 
-interface ContentItem {
+type ContentItem = {
   id: number
+  user_id: string
   date: string
   title: string
-  type: 'article' | 'long_form' | 'am_motivation' | 'health_tip' | 'ai_health' | 'nighttime_reflection' | 'short_form' | 'topic_pipeline' | string
-  content: string
-  status: 'scheduled' | 'posted' | 'draft'
+  type: string
+  content: string | null
+  status: string
   platform: string
 }
 
-const CONTENT_TYPES = {
-  article: { label: 'Article', color: '#ec4899' },        // Pink
-  long_form: { label: 'Long Form', color: '#8b5cf6' }, // Purple
-  am_motivation: { label: 'AM Motivation', color: '#f59e0b' }, // Amber
-  health_tip: { label: 'Health Tip', color: '#10b981' }, // Green
-  ai_health: { label: 'AI + Health', color: '#3b82f6' }, // Blue
-  nighttime_reflection: { label: 'Nighttime Reflection', color: '#6366f1' }, // Indigo
-  daily_wellness_reminder: { label: 'Daily Wellness Reminder', color: '#14b8a6' }, // Teal
-  short_form: { label: 'Short Form', color: '#64748b' }, // Slate
-  app_build: { label: 'App Build', color: '#ef4444' },   // Red
-  app_build_long: { label: 'App Build Long', color: '#f97316' } // Orange
+type AccessState = {
+  status: 'pending' | 'active' | 'disabled'
+  canUseScheduler: boolean
+}
+
+const CONTENT_TYPES: Record<string, { label: string; color: string }> = {
+  article: { label: 'Article', color: '#ec4899' },
+  long_form: { label: 'Long Form', color: '#8b5cf6' },
+  am_motivation: { label: 'AM Motivation', color: '#f59e0b' },
+  health_tip: { label: 'Health Tip', color: '#10b981' },
+  ai_health: { label: 'AI + Health', color: '#3b82f6' },
+  nighttime_reflection: { label: 'Nighttime Reflection', color: '#6366f1' },
+  daily_wellness_reminder: { label: 'Daily Wellness Reminder', color: '#14b8a6' },
+  short_form: { label: 'Short Form', color: '#64748b' },
+  app_build: { label: 'App Build', color: '#ef4444' },
+  app_build_long: { label: 'App Build Long', color: '#f97316' }
 }
 
 export default function ContentCalendar() {
+  const router = useRouter()
+  const [access, setAccess] = useState<AccessState | null>(null)
+  const [userId, setUserId] = useState<string>('')
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [contentItems, setContentItems] = useState<ContentItem[]>([])
-  const [newItem, setNewItem] = useState({ title: '', type: 'short_form' as const, content: '', platform: 'X' })
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
   const [viewMonth, setViewMonth] = useState(new Date().getMonth())
   const [viewYear, setViewYear] = useState(new Date().getFullYear())
+  const [newItem, setNewItem] = useState({ title: '', type: 'short_form', content: '', platform: 'X' })
 
   useEffect(() => {
-    fetch(`${SUPABASE_URL}/rest/v1/content?order=date.asc`, {
-      headers: {
-        'apikey': SUPABASE_KEY,
-        'Authorization': `Bearer ${SUPABASE_KEY}`
-      }
-    })
-    .then(res => res.json())
-    .then(data => setContentItems(data || []))
-    .catch(console.error)
+    void initialize()
   }, [])
 
-  // Generate calendar days for view month
-  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate()
-  const firstDayOfMonth = new Date(viewYear, viewMonth, 1).getDay()
+  const initialize = async () => {
+    setLoading(true)
+    setError('')
 
-  const days = []
-  for (let i = 0; i < firstDayOfMonth; i++) {
-    days.push(null)
-  }
-  for (let i = 1; i <= daysInMonth; i++) {
-    days.push(i)
+    const {
+      data: { user }
+    } = await supabase.auth.getUser()
+
+    if (!user) {
+      router.push('/')
+      return
+    }
+
+    setUserId(user.id)
+
+    const [profileRes, permissionRes] = await Promise.all([
+      supabase.from('profiles').select('status').eq('id', user.id).maybeSingle(),
+      supabase.from('user_permissions').select('can_use_scheduler').eq('user_id', user.id).maybeSingle()
+    ])
+
+    if (profileRes.error || permissionRes.error || !profileRes.data) {
+      setError('Unable to load access settings.')
+      setLoading(false)
+      return
+    }
+
+    const nextAccess: AccessState = {
+      status: profileRes.data.status,
+      canUseScheduler: Boolean(permissionRes.data?.can_use_scheduler)
+    }
+
+    setAccess(nextAccess)
+
+    if (nextAccess.status === 'pending') {
+      router.push('/pending')
+      return
+    }
+
+    if (nextAccess.status === 'active' && nextAccess.canUseScheduler) {
+      await loadItems(user.id)
+    }
+
+    setLoading(false)
   }
 
-  const getContentForDay = (day: number) => {
-    const dateStr = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-    return contentItems.filter(item => item.date === dateStr)
-  }
+  const loadItems = async (uid: string) => {
+    const { data, error: fetchError } = await supabase
+      .from('content_items')
+      .select('id, user_id, date, title, type, content, status, platform')
+      .eq('user_id', uid)
+      .order('date', { ascending: true })
 
-  const getDayColor = (day: number) => {
-    const items = getContentForDay(day)
-    if (items.length === 0) return 'transparent'
-    // Priority: article > long_form > am_motivation > health_tip > ai_health > nighttime > topic
-    if (items.some(i => i.type === 'article')) return CONTENT_TYPES.article.color
-    if (items.some(i => i.type === 'long_form')) return CONTENT_TYPES.long_form.color
-    if (items.some(i => i.type === 'am_motivation')) return CONTENT_TYPES.am_motivation.color
-    if (items.some(i => i.type === 'health_tip')) return CONTENT_TYPES.health_tip.color
-    if (items.some(i => i.type === 'daily_wellness_reminder')) return CONTENT_TYPES.daily_wellness_reminder.color
-    if (items.some(i => i.type === 'ai_health')) return CONTENT_TYPES.ai_health.color
-    if (items.some(i => i.type === 'nighttime_reflection')) return CONTENT_TYPES.nighttime_reflection.color
-    return CONTENT_TYPES.short_form.color
+    if (fetchError) {
+      setError(fetchError.message)
+      return
+    }
+
+    setContentItems(data || [])
   }
 
   const addContent = async () => {
-    if (!selectedDate || !newItem.title) return
-    setLoading(true)
-    
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/content`, {
-      method: 'POST',
-      headers: {
-        'apikey': SUPABASE_KEY,
-        'Authorization': `Bearer ${SUPABASE_KEY}`,
-        'Content-Type': 'application/json',
-        'Prefer': 'return=minimal'
-      },
-      body: JSON.stringify({
-        title: newItem.title,
+    if (!selectedDate || !newItem.title.trim() || !userId) return
+
+    setSaving(true)
+    setError('')
+
+    const { data, error: insertError } = await supabase
+      .from('content_items')
+      .insert({
+        user_id: userId,
         date: selectedDate,
+        title: newItem.title.trim(),
         type: newItem.type,
         content: newItem.content,
         status: 'scheduled',
         platform: newItem.platform
       })
-    })
-    
-    if (res.ok) {
-      const newItemWithId: ContentItem = {
-        id: Date.now(),
-        date: selectedDate,
-        title: newItem.title,
-        type: newItem.type,
-        content: newItem.content,
-        status: 'scheduled',
-        platform: newItem.platform
-      }
-      setContentItems([...contentItems, newItemWithId])
-      setNewItem({ title: '', type: 'short_form', content: '', platform: 'X' })
+      .select('id, user_id, date, title, type, content, status, platform')
+      .single()
+
+    if (insertError) {
+      setError(insertError.message)
+      setSaving(false)
+      return
     }
-    setLoading(false)
+
+    setContentItems((prev) => [...prev, data])
+    setNewItem({ title: '', type: 'short_form', content: '', platform: 'X' })
+    setSaving(false)
+  }
+
+  const deleteContent = async (id: number) => {
+    setError('')
+    const { error: deleteError } = await supabase.from('content_items').delete().eq('id', id)
+    if (deleteError) {
+      setError(deleteError.message)
+      return
+    }
+
+    setContentItems((prev) => prev.filter((item) => item.id !== id))
+  }
+
+  const daysInMonth = useMemo(() => new Date(viewYear, viewMonth + 1, 0).getDate(), [viewMonth, viewYear])
+  const firstDayOfMonth = useMemo(() => new Date(viewYear, viewMonth, 1).getDay(), [viewMonth, viewYear])
+
+  const days = useMemo(() => {
+    const result: Array<number | null> = []
+    for (let i = 0; i < firstDayOfMonth; i += 1) result.push(null)
+    for (let i = 1; i <= daysInMonth; i += 1) result.push(i)
+    return result
+  }, [daysInMonth, firstDayOfMonth])
+
+  const getDateStr = (day: number) => `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+
+  const getContentForDay = (day: number) => {
+    const dateStr = getDateStr(day)
+    return contentItems.filter((item) => item.date === dateStr)
+  }
+
+  if (loading) {
+    return <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: '#000', color: '#fff' }}>Loading calendar...</div>
+  }
+
+  if (!access || access.status !== 'active' || !access.canUseScheduler) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: '#000', color: '#fff', padding: '1rem' }}>
+        <div style={{ background: '#111', border: '1px solid #333', borderRadius: '10px', padding: '1rem', maxWidth: '560px' }}>
+          <h2 style={{ marginTop: 0 }}>No access</h2>
+          <p style={{ color: '#aaa' }}>
+            Your account does not have scheduler access. Contact an admin to enable `can_use_scheduler` and set your status to active.
+          </p>
+        </div>
+      </div>
+    )
   }
 
   const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 
   return (
     <div style={{ padding: '1.5rem', background: '#0a0a0a', minHeight: '100vh', color: '#fff' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-        <h1 style={{ margin: 0, fontSize: '1.5rem' }}>📅 Content Calendar</h1>
-        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-          {Object.entries(CONTENT_TYPES).map(([key, val]) => (
-            <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.75rem' }}>
-              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: val.color }} />
-              <span style={{ color: '#888' }}>{val.label}</span>
-            </div>
-          ))}
-        </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', gap: '1rem', flexWrap: 'wrap' }}>
+        <h1 style={{ margin: 0, fontSize: '1.5rem' }}>Content Calendar</h1>
+        <button onClick={() => router.push('/dashboard')} style={{ padding: '8px 12px', background: '#333', border: 'none', color: '#fff', borderRadius: '6px', cursor: 'pointer' }}>
+          Back to dashboard
+        </button>
       </div>
 
-      {/* Calendar */}
-      <div style={{ background: '#111', borderRadius: '12px', padding: '1rem', marginBottom: '1.5rem' }}>
+      {error && <div style={{ marginBottom: '0.75rem', background: '#7f1d1d', border: '1px solid #dc2626', borderRadius: '8px', padding: '0.75rem' }}>{error}</div>}
+
+      <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap' }}>
+        {Object.entries(CONTENT_TYPES).map(([key, val]) => (
+          <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.75rem' }}>
+            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: val.color }} />
+            <span style={{ color: '#aaa' }}>{val.label}</span>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ background: '#111', borderRadius: '12px', padding: '1rem', marginBottom: '1rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-          <button onClick={() => { if (viewMonth === 0) { setViewMonth(11); setViewYear(viewYear - 1) } else { setViewMonth(viewMonth - 1) } }} style={{ background: '#333', border: 'none', color: '#fff', padding: '8px 12px', borderRadius: '4px', cursor: 'pointer' }}>←</button>
-          <span style={{ fontSize: '1.25rem', fontWeight: '600' }}>{months[viewMonth]} {viewYear}</span>
-          <button onClick={() => { if (viewMonth === 11) { setViewMonth(0); setViewYear(viewYear + 1) } else { setViewMonth(viewMonth + 1) } }} style={{ background: '#333', border: 'none', color: '#fff', padding: '8px 12px', borderRadius: '4px', cursor: 'pointer' }}>→</button>
+          <button
+            onClick={() => {
+              if (viewMonth === 0) {
+                setViewMonth(11)
+                setViewYear(viewYear - 1)
+              } else {
+                setViewMonth(viewMonth - 1)
+              }
+            }}
+            style={{ background: '#333', border: 'none', color: '#fff', padding: '8px 12px', borderRadius: '4px', cursor: 'pointer' }}
+          >
+            ←
+          </button>
+          <span style={{ fontSize: '1.25rem', fontWeight: 600 }}>{months[viewMonth]} {viewYear}</span>
+          <button
+            onClick={() => {
+              if (viewMonth === 11) {
+                setViewMonth(0)
+                setViewYear(viewYear + 1)
+              } else {
+                setViewMonth(viewMonth + 1)
+              }
+            }}
+            style={{ background: '#333', border: 'none', color: '#fff', padding: '8px 12px', borderRadius: '4px', cursor: 'pointer' }}
+          >
+            →
+          </button>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '0.5rem', marginBottom: '0.5rem' }}>
-          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
-            <div key={d} style={{ textAlign: 'center', fontSize: '0.7rem', color: '#666', padding: '0.5rem' }}>{d}</div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '0.35rem', marginBottom: '0.35rem' }}>
+          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => (
+            <div key={d} style={{ textAlign: 'center', fontSize: '0.75rem', color: '#666', padding: '0.4rem' }}>{d}</div>
           ))}
         </div>
+
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '0.25rem' }}>
           {days.map((day, idx) => (
             <div
               key={idx}
-              onClick={() => day && setSelectedDate(`${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`)}
+              onClick={() => day && setSelectedDate(getDateStr(day))}
               style={{
-                height: '60px',
-                background: selectedDate === `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}` ? '#1a1a1a' : '#0a0a0a',
-                border: selectedDate === `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}` ? '1px solid #333' : '1px solid transparent',
+                height: '62px',
+                background: day && selectedDate === getDateStr(day) ? '#1a1a1a' : '#0a0a0a',
+                border: day && selectedDate === getDateStr(day) ? '1px solid #444' : '1px solid transparent',
                 borderRadius: '8px',
                 padding: '0.5rem',
                 cursor: day ? 'pointer' : 'default',
@@ -161,14 +262,12 @@ export default function ContentCalendar() {
             >
               {day && (
                 <>
-                  <div style={{ fontSize: '0.875rem', fontWeight: '500' }}>{day}</div>
-                  {getContentForDay(day).length > 0 && (
-                    <div style={{ position: 'absolute', bottom: '4px', left: '4px', right: '4px', display: 'flex', gap: '2px' }}>
-                      {getContentForDay(day).slice(0, 3).map((item, i) => (
-                        <div key={i} style={{ flex: 1, height: '4px', borderRadius: '2px', background: CONTENT_TYPES[item.type as keyof typeof CONTENT_TYPES]?.color || '#64748b' }} />
-                      ))}
-                    </div>
-                  )}
+                  <div style={{ fontSize: '0.85rem' }}>{day}</div>
+                  <div style={{ position: 'absolute', bottom: '4px', left: '4px', right: '4px', display: 'flex', gap: '2px' }}>
+                    {getContentForDay(day).slice(0, 3).map((item) => (
+                      <div key={item.id} style={{ flex: 1, height: '4px', borderRadius: '2px', background: CONTENT_TYPES[item.type]?.color || '#64748b' }} />
+                    ))}
+                  </div>
                 </>
               )}
             </div>
@@ -176,44 +275,30 @@ export default function ContentCalendar() {
         </div>
       </div>
 
-      {/* Selected Day Content */}
       {selectedDate && (
-        <div style={{ background: '#111', borderRadius: '12px', padding: '1.5rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-            <h2 style={{ margin: 0, fontSize: '1.125rem' }}>
-              {new Date(selectedDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
-            </h2>
-            <button
-              onClick={() => setSelectedDate(null)}
-              style={{ background: 'transparent', border: 'none', color: '#666', cursor: 'pointer', fontSize: '1.25rem' }}
-            >
-              ✕
-            </button>
-          </div>
-
-          {/* Add New Content */}
-          <div style={{ background: '#1a1a1a', borderRadius: '8px', padding: '1rem', marginBottom: '1rem' }}>
-            <div style={{ marginBottom: '0.75rem' }}>Add New Content</div>
+        <div style={{ background: '#111', borderRadius: '12px', padding: '1rem' }}>
+          <h2 style={{ marginTop: 0, fontSize: '1.1rem' }}>{new Date(selectedDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</h2>
+          <div style={{ background: '#1a1a1a', borderRadius: '8px', padding: '0.75rem', marginBottom: '0.75rem' }}>
             <input
               type="text"
-              placeholder="Content title..."
+              placeholder="Content title"
               value={newItem.title}
-              onChange={e => setNewItem({ ...newItem, title: e.target.value })}
+              onChange={(e) => setNewItem({ ...newItem, title: e.target.value })}
               style={{ width: '100%', padding: '0.5rem', background: '#000', border: '1px solid #333', borderRadius: '4px', color: '#fff', marginBottom: '0.5rem' }}
             />
             <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
               <select
                 value={newItem.type}
-                onChange={e => setNewItem({ ...newItem, type: e.target.value as any })}
+                onChange={(e) => setNewItem({ ...newItem, type: e.target.value })}
                 style={{ flex: 1, padding: '0.5rem', background: '#000', border: '1px solid #333', borderRadius: '4px', color: '#fff' }}
               >
-                {Object.entries(CONTENT_TYPES).filter(([key]) => !['short_form', 'topic_pipeline'].includes(key)).map(([key, val]) => (
+                {Object.entries(CONTENT_TYPES).map(([key, val]) => (
                   <option key={key} value={key}>{val.label}</option>
                 ))}
               </select>
               <select
                 value={newItem.platform}
-                onChange={e => setNewItem({ ...newItem, platform: e.target.value })}
+                onChange={(e) => setNewItem({ ...newItem, platform: e.target.value })}
                 style={{ flex: 1, padding: '0.5rem', background: '#000', border: '1px solid #333', borderRadius: '4px', color: '#fff' }}
               >
                 <option value="X">X</option>
@@ -223,42 +308,36 @@ export default function ContentCalendar() {
               </select>
             </div>
             <textarea
-              placeholder="Content details..."
+              placeholder="Content details"
               value={newItem.content}
-              onChange={e => setNewItem({ ...newItem, content: e.target.value })}
+              onChange={(e) => setNewItem({ ...newItem, content: e.target.value })}
               style={{ width: '100%', padding: '0.5rem', background: '#000', border: '1px solid #333', borderRadius: '4px', color: '#fff', marginBottom: '0.5rem', minHeight: '60px' }}
             />
             <button
               onClick={addContent}
-              disabled={loading || !newItem.title}
-              style={{ width: '100%', padding: '0.5rem', background: '#6366f1', color: '#fff', border: 'none', borderRadius: '4px', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.5 : 1 }}
+              disabled={saving || !newItem.title.trim()}
+              style={{ width: '100%', padding: '0.5rem', background: '#6366f1', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', opacity: saving ? 0.5 : 1 }}
             >
-              {loading ? 'Adding...' : 'Add Content'}
+              {saving ? 'Adding...' : 'Add content'}
             </button>
           </div>
 
-          {/* Content List */}
-          <div>
-            {getContentForDay(parseInt(selectedDate.split('-')[2])).length === 0 ? (
-              <div style={{ color: '#666', textAlign: 'center', padding: '2rem' }}>No content scheduled for this day</div>
-            ) : (
-              getContentForDay(parseInt(selectedDate.split('-')[2])).map(item => (
-                <div key={item.id} style={{ background: '#0a0a0a', borderRadius: '8px', padding: '1rem', marginBottom: '0.5rem', borderLeft: `3px solid ${(CONTENT_TYPES as any)[item.type]?.color || '#64748b'}` }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                    <div style={{ fontWeight: '600' }}>{item.title}</div>
-                    <span style={{ fontSize: '0.7rem', padding: '2px 6px', borderRadius: '4px', background: (CONTENT_TYPES as any)[item.type]?.color + '20', color: (CONTENT_TYPES as any)[item.type]?.color }}>
-                      {(CONTENT_TYPES as any)[item.type]?.label || 'Post'}
-                    </span>
+          {getContentForDay(parseInt(selectedDate.split('-')[2], 10)).length === 0 ? (
+            <div style={{ color: '#777' }}>No content scheduled for this day.</div>
+          ) : (
+            getContentForDay(parseInt(selectedDate.split('-')[2], 10)).map((item) => (
+              <div key={item.id} style={{ background: '#0a0a0a', borderRadius: '8px', padding: '0.75rem', marginBottom: '0.5rem', borderLeft: `3px solid ${CONTENT_TYPES[item.type]?.color || '#64748b'}` }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
+                  <div>
+                    <div style={{ fontWeight: 600 }}>{item.title}</div>
+                    <div style={{ fontSize: '0.8rem', color: '#888' }}>{item.platform}</div>
                   </div>
-                  {item.content && <div style={{ fontSize: '0.875rem', color: '#888', marginBottom: '0.5rem' }}>{item.content}</div>}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div style={{ fontSize: '0.75rem', color: '#666' }}>📱 {item.platform}</div>
-                    <button onClick={() => { navigator.clipboard.writeText(item.content); alert('Copied!') }} style={{ fontSize: '0.7rem', padding: '4px 8px', background: '#333', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>📋 Copy</button>
-                  </div>
+                  <button onClick={() => deleteContent(item.id)} style={{ padding: '6px 10px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Delete</button>
                 </div>
-              ))
-            )}
-          </div>
+                {item.content && <div style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: '#bbb' }}>{item.content}</div>}
+              </div>
+            ))
+          )}
         </div>
       )}
     </div>

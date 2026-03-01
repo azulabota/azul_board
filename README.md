@@ -1,63 +1,74 @@
 # Sapien Eleven Project Dashboard
 
-A project management dashboard for Sapien Eleven.
+A Next.js 14 dashboard powered by Supabase.
 
 ## Features
 
-- **Tasks** - Create, track, and manage project tasks
-- **Milestones** - Set project milestones with progress tracking
-- **Files** - Upload and share project files
-- **Team** - Invite team members with different roles
+- Auth with admin-approved signup flow
+- Role-based access control (admin/user)
+- Per-user permissions for dev dashboard and content scheduler
+- Per-user content calendar with RLS
+- Admin panel for approvals, permission toggles, and role management
 
 ## Tech Stack
 
-- Next.js 14
-- Supabase (Auth + Database + Storage)
-- Vercel (Deployment)
+- Next.js 14 (App Router)
+- Supabase (Auth + Postgres + Storage)
+- TypeScript
 
-## Setup Instructions
+## Setup
 
-### 1. Supabase Setup
+### 1. Create a Supabase project
 
-1. Create a project at [supabase.com](https://supabase.com)
-2. Go to the SQL Editor in your Supabase dashboard
-3. Copy and paste the contents of `supabase-schema.sql` and run it
-3. Go to Settings → API
-4. Copy the `Project URL` and `anon public` key
+1. Create a project at [supabase.com](https://supabase.com).
+2. Open SQL Editor.
+3. Run `supabase-schema.sql`.
+4. Run migration: `supabase/migrations/001_rbac_calendar.sql`.
+5. In Settings -> API, copy:
+- Project URL
+- `anon` public key
+- `service_role` secret key
 
-### 2. Environment Variables
+### 2. Environment variables
 
-Create a `.env.local` file:
-
-```
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-```
-
-### 3. Deploy to Vercel
-
-1. Push this code to a GitHub repository
-2. Go to [vercel.com](https://vercel.com)
-3. Import the repository
-4. Add the environment variables in Vercel settings
-5. Deploy!
-
-### 4. Local Development
+Create `.env.local`:
 
 ```bash
-cd sapien-dashboard
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+```
+
+### 3. Local development
+
+```bash
 npm install
 npm run dev
 ```
 
-## Usage
+### 4. Bootstrap your first admin
 
-1. Sign up for an account
-2. Add tasks and milestones
-3. Invite team members
-4. Upload project files
-5. Track progress
+Because signups start as `pending`, you’ll need to manually promote your first account to admin once you sign up.
 
-## License
+In Supabase **SQL Editor** (replace `<YOUR_USER_ID>`):
 
-MIT
+```sql
+update public.profiles set status = 'active' where id = '<YOUR_USER_ID>';
+insert into public.user_roles (user_id, role) values ('<YOUR_USER_ID>', 'admin') on conflict do nothing;
+update public.user_permissions set can_use_dev_dashboard = true, can_use_scheduler = true where user_id = '<YOUR_USER_ID>';
+```
+
+After that, log in and visit `/admin`.
+
+### 5. Notes for admin flow
+
+- New signups are created with `profiles.status = 'pending'`.
+- A trigger auto-creates `profiles`, `user_permissions`, and default `user` role.
+- Admins approve/disable users and manage permissions/roles from `/admin`.
+- Pending users are redirected to `/pending`.
+
+## Build check
+
+```bash
+npm run build
+```

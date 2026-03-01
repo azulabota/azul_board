@@ -7,12 +7,16 @@ interface Milestone { id: number; title: string }
 interface Task { id: number; milestone_id: number; title: string; status: string; priority: string; assignee: string; description: string; created_by: string }
 interface File { id: number; milestone_id: number; name: string; url: string }
 interface Revision { id: number; milestone_id: number; title: string; code_snippet: string; file_name: string; image_url: string; description: string; priority: string; status: string; assignee: string; created_by: string; created_at?: string }
-interface Profile { id: string; email: string; first_name: string }
+interface Profile { id: string; email: string; first_name: string; status?: 'pending' | 'active' | 'disabled' }
 
 export default function Dashboard() {
   const router = useRouter()
   const [user, setUser] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [profileStatus, setProfileStatus] = useState<'pending' | 'active' | 'disabled' | null>(null)
+  const [canUseDevDashboard, setCanUseDevDashboard] = useState(false)
+  const [canUseScheduler, setCanUseScheduler] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(false)
   const [milestones, setMilestones] = useState<Milestone[]>([])
   const [selectedMilestone, setSelectedMilestone] = useState<number | null>(null)
   const [activeView, setActiveView] = useState<'dashboard' | 'files' | 'revisions' | 'content'>('dashboard')
@@ -54,7 +58,33 @@ export default function Dashboard() {
   const checkUser = async () => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { router.push('/') }
-    else { setUser(user); fetchData() }
+    else {
+      setUser(user)
+
+      const [profileRes, permissionRes, adminRes] = await Promise.all([
+        supabase.from('profiles').select('status').eq('id', user.id).maybeSingle(),
+        supabase.from('user_permissions').select('can_use_dev_dashboard, can_use_scheduler').eq('user_id', user.id).maybeSingle(),
+        supabase.rpc('is_admin', { uid: user.id })
+      ])
+
+      const status = profileRes.data?.status || 'pending'
+      setProfileStatus(status)
+      setCanUseDevDashboard(Boolean(permissionRes.data?.can_use_dev_dashboard))
+      setCanUseScheduler(Boolean(permissionRes.data?.can_use_scheduler))
+      setIsAdmin(Boolean(adminRes.data))
+
+      if (status === 'pending') {
+        router.push('/pending')
+        return
+      }
+
+      if (status === 'active' && permissionRes.data?.can_use_dev_dashboard) {
+        fetchData()
+        return
+      }
+
+      setLoading(false)
+    }
   }
 
   const fetchData = async () => {
@@ -303,6 +333,34 @@ export default function Dashboard() {
 
   if (loading) return <div style={{background:'#000',color:'#fff',minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center'}}>Loading...</div>
 
+  if (profileStatus !== 'active' || !canUseDevDashboard) {
+    return (
+      <div style={{ background:'#000', color:'#fff', minHeight:'100vh', display:'grid', placeItems:'center', padding:'1.5rem' }}>
+        <div style={{ background:'#111', border:'1px solid #333', borderRadius:'10px', padding:'1.25rem', width:'100%', maxWidth:'560px' }}>
+          <h1 style={{ marginTop:0 }}>Limited Access</h1>
+          <p style={{ color:'#aaa', marginBottom:'1rem' }}>
+            Your account does not have access to the development dashboard yet.
+          </p>
+          <div style={{ display:'flex', gap:'0.5rem', flexWrap:'wrap' }}>
+            {canUseScheduler && profileStatus === 'active' && (
+              <button onClick={() => router.push('/dashboard/content')} style={{ padding:'8px 12px', background:'#6366f1', border:'none', borderRadius:'6px', color:'#fff', cursor:'pointer' }}>
+                Open Content Calendar
+              </button>
+            )}
+            {isAdmin && (
+              <button onClick={() => router.push('/admin')} style={{ padding:'8px 12px', background:'#2563eb', border:'none', borderRadius:'6px', color:'#fff', cursor:'pointer' }}>
+                Open Admin Panel
+              </button>
+            )}
+            <button onClick={handleLogout} style={{ padding:'8px 12px', background:'#dc2626', border:'none', borderRadius:'6px', color:'#fff', cursor:'pointer' }}>
+              Logout
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div style={s.container}>
       <div style={s.sidebar}>
@@ -327,15 +385,22 @@ export default function Dashboard() {
             <button onClick={addMilestone} style={s.addBtn}>+ Add Milestone</button>
           </>
         )}
-        <button onClick={() => {
-          if (activeView === 'content') {
-            setActiveView('dashboard')
-          } else {
-            setActiveView('content')
-          }
-        }} style={{...s.logoutBtn, background: activeView === 'content' ? '#6366f1' : '#333', marginBottom: '0.5rem'}}>
-          {sidebarCollapsed ? (activeView === 'content' ? '📋' : '📅') : (activeView === 'content' ? '← Dashboard' : '📅 Content')}
-        </button>
+        {canUseScheduler && (
+          <button onClick={() => {
+            if (activeView === 'content') {
+              setActiveView('dashboard')
+            } else {
+              setActiveView('content')
+            }
+          }} style={{...s.logoutBtn, background: activeView === 'content' ? '#6366f1' : '#333', marginBottom: '0.5rem'}}>
+            {sidebarCollapsed ? (activeView === 'content' ? '📋' : '📅') : (activeView === 'content' ? '← Dashboard' : '📅 Content')}
+          </button>
+        )}
+        {isAdmin && (
+          <button onClick={() => router.push('/admin')} style={{...s.logoutBtn, background:'#2563eb', marginBottom:'0.5rem'}}>
+            {sidebarCollapsed ? '🛡️' : 'Admin Panel'}
+          </button>
+        )}
         <button onClick={handleLogout} style={s.logoutBtn}>{sidebarCollapsed ? '⬜' : 'Logout'}</button>
       </div>
 
