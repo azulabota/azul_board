@@ -39,6 +39,16 @@ type Pipeline = {
   post_time_end?: string | null
 }
 
+type GenerationJobState = {
+  id: number
+  status: 'queued' | 'running' | 'done' | 'failed'
+  error?: string | null
+  result?: {
+    generated: number
+    inserted: number
+  }
+}
+
 const DEFAULT_PIPELINES: Array<Pick<Pipeline, 'key' | 'name' | 'description' | 'color' | 'days_of_week'>> = [
   { key: 'article', name: 'Article', description: 'Long-form written content', color: '#ec4899', days_of_week: [1, 3, 5] },
   { key: 'long_form', name: 'Long Form', description: 'Longer posts, threads, or deep dives', color: '#8b5cf6', days_of_week: [2] },
@@ -85,6 +95,7 @@ export default function ContentCalendar() {
   const [showManagePipelines, setShowManagePipelines] = useState(false)
   const [pipelineBusy, setPipelineBusy] = useState(false)
   const [pipelineError, setPipelineError] = useState('')
+  const [generationJob, setGenerationJob] = useState<GenerationJobState | null>(null)
 
   const [newPipeline, setNewPipeline] = useState({
     key: '',
@@ -235,6 +246,52 @@ export default function ContentCalendar() {
       setNewItem((prev) => ({ ...prev, pipeline_key: rows[0].key }))
     }
   }
+
+  const loadGenerationJobStatus = async (jobId: number) => {
+    const {
+      data: { session }
+    } = await supabase.auth.getSession()
+
+    const token = session?.access_token
+    if (!token) {
+      setPipelineError('Session expired. Please sign in again.')
+      return null
+    }
+
+    const res = await fetch(`/api/calendar/generation-job?id=${jobId}`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}` }
+    })
+
+    const payload = await res.json().catch(() => null)
+    if (!res.ok) {
+      setPipelineError(payload?.error || 'Failed to check generation job status')
+      return null
+    }
+
+    const job = payload?.job as GenerationJobState
+    setGenerationJob(job)
+    return job
+  }
+
+  useEffect(() => {
+    if (!generationJob || (generationJob.status !== 'queued' && generationJob.status !== 'running')) return
+    const interval = setInterval(() => {
+      void loadGenerationJobStatus(generationJob.id).then(async (job) => {
+        if (!job) return
+        if (job.status === 'done') {
+          if (userId) await loadItems(userId)
+          setPipelineBusy(false)
+        } else if (job.status === 'failed') {
+          setPipelineBusy(false)
+          setPipelineError(job.error || 'Generation failed')
+        }
+      })
+    }, 2000)
+
+    return () => clearInterval(interval)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [generationJob?.id, generationJob?.status, userId])
 
   const pipelineByKey = useMemo(() => {
     const map = new Map<string, Pipeline>()
@@ -861,6 +918,7 @@ export default function ContentCalendar() {
                     <button
                       onClick={async () => {
                         setPipelineError('')
+                        setGenerationJob(null)
                         setPipelineBusy(true)
                         const {
                           data: { session }
@@ -889,16 +947,42 @@ export default function ContentCalendar() {
                           return
                         }
 
-                        await loadItems(userId)
-                        setPipelineBusy(false)
-                        alert(`Generated ${payload?.inserted || 0} drafts`) 
+                        if (!payload?.job_id) {
+                          if (Number(payload?.queued || 0) === 0) {
+                            setGenerationJob(null)
+                            setPipelineBusy(false)
+                            return
+                          }
+                          setPipelineError('Job did not return an id')
+                          setPipelineBusy(false)
+                          return
+                        }
+
+                        setGenerationJob({
+                          id: Number(payload.job_id),
+                          status: payload.status || 'queued'
+                        })
+
+                        if ((payload.status || 'queued') === 'done') {
+                          await loadItems(userId)
+                          setPipelineBusy(false)
+                        }
                       }}
                       disabled={pipelineBusy}
                       style={withDisabled({ ...ui.buttonPrimary, flex: 1, padding: '0.55rem' }, pipelineBusy)}
                     >
-                      {pipelineBusy ? 'Generating…' : 'Generate 7 days'}
+                      {pipelineBusy ? 'Queueing…' : 'Generate 7 days'}
                     </button>
                   </div>
+                  {generationJob && (
+                    <div style={{ marginTop: '0.5rem', fontSize: '0.85rem', color: generationJob.status === 'failed' ? 'var(--danger)' : 'var(--muted)' }}>
+                      Job #{generationJob.id}: {generationJob.status}
+                      {generationJob.status === 'done' && generationJob.result
+                        ? ` (${generationJob.result.inserted} drafts inserted)`
+                        : ''}
+                      {generationJob.status === 'failed' && generationJob.error ? ` - ${generationJob.error}` : ''}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

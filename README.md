@@ -25,6 +25,7 @@ A Next.js 14 dashboard powered by Supabase.
 3. Run `supabase-schema.sql`.
 4. Run migration: `supabase/migrations/001_rbac_calendar.sql`.
 5. Run migration: `supabase/migrations/002_api_keys_and_dev_policies.sql`.
+6. Run migration: `supabase/migrations/008_generation_jobs.sql`.
 6. In Settings -> API, copy:
 - Project URL
 - `anon` public key
@@ -76,6 +77,28 @@ After that, log in and visit `/admin`.
 #### Upload retention
 - Attachments are marked with `expires_at = now + 30 days`.
 - (Cleanup automation can be added later; for now it’s metadata + manual cleanup.)
+
+### Async generation worker (Mac mini)
+
+Pipeline generation now uses a Supabase-backed queue (`public.generation_jobs`) and a local worker process. No inbound tunnel is required.
+
+1. Ensure migration `supabase/migrations/008_generation_jobs.sql` is applied.
+2. On the Mac mini, set env vars:
+
+```bash
+SUPABASE_URL=your_supabase_project_url
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+MODEL_PROVIDER=stub # or openai
+OPENAI_API_KEY=...   # optional for future OpenAI integration
+```
+
+3. Run the worker:
+
+```bash
+npx tsx scripts/generation-worker.ts
+```
+
+The worker polls queued jobs, writes draft `content_items`, and marks each job `done` or `failed`.
 
 ### 5. Notes for admin flow
 

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticateBearerUser } from '../../../../lib/server-auth'
 import { createSupabaseUserClient } from '../../../../lib/supabase-admin'
-import { decryptSecret } from '../../../../lib/encryption'
 
 type Body = {
   pipeline_key?: string // optional; if omitted, generate for all enabled pipelines
@@ -48,31 +47,6 @@ export async function POST(request: NextRequest) {
   const pipelineKey = typeof body.pipeline_key === 'string' ? body.pipeline_key.trim() : ''
 
   const supabase = createSupabaseUserClient(auth.token)
-
-  // Load bot connection
-  const { data: connection, error: connectionError } = await supabase
-    .from('user_ai_connections')
-    .select('bot_base_url, bot_token_ciphertext, bot_token_iv, bot_token_tag')
-    .eq('user_id', auth.userId)
-    .maybeSingle()
-
-  if (connectionError) {
-    return NextResponse.json({ error: connectionError.message }, { status: 500 })
-  }
-
-  const botBaseUrl = (connection?.bot_base_url || '').trim().replace(/\/+$/, '')
-  const botToken = decryptSecret({
-    ciphertext: connection?.bot_token_ciphertext || '',
-    iv: connection?.bot_token_iv || '',
-    tag: connection?.bot_token_tag || ''
-  })
-
-  if (!botBaseUrl || !botToken) {
-    return NextResponse.json(
-      { error: 'Coding Cockpit bot is not connected yet. Open Coding Cockpit and set Bot base URL + Bot token.' },
-      { status: 400 }
-    )
-  }
 
   // Pipelines
   let pipelinesQuery = supabase
@@ -142,74 +116,43 @@ export async function POST(request: NextRequest) {
   const slotsToGenerate = slots.filter((s) => !existingSet.has(`${s.date}::${s.pipeline_key}`))
 
   if (slotsToGenerate.length === 0) {
-    return NextResponse.json({ ok: true, generated: 0, inserted: 0, message: 'Nothing to generate (all slots already filled).' })
+    return NextResponse.json({
+      ok: true,
+      queued: 0,
+      message: 'Nothing to generate (all slots already filled).'
+    })
   }
 
-  // Call bot relay
-  const upstream = await fetch(`${botBaseUrl}/cockpit/generate-week`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${botToken}`
-    },
-    body: JSON.stringify({
+  const instructions = {
+    tone: 'award-winning writer, 15 years experience',
+    goals: ['engage followers', 'spark curiosity', 'gain followers', 'grow account'],
+    constraints: ['No medical claims unless explicitly supported', 'Be concise and high-signal']
+  }
+
+  const { data: insertedJob, error: insertJobError } = await supabase
+    .from('generation_jobs')
+    .insert({
       user_id: auth.userId,
+      kind: 'pipeline_week',
+      pipeline_key: pipelineKey || null,
+      days,
       platform,
-      slots: slotsToGenerate,
-      instructions: {
-        tone: 'award-winning writer, 15 years experience',
-        goals: ['engage followers', 'spark curiosity', 'gain followers', 'grow account'],
-        constraints: ['No medical claims unless explicitly supported', 'Be concise and high-signal']
+      payload: {
+        slots: slotsToGenerate,
+        instructions
       }
     })
+    .select('id, status')
+    .single()
+
+  if (insertJobError) {
+    return NextResponse.json({ error: insertJobError.message }, { status: 500 })
+  }
+
+  return NextResponse.json({
+    ok: true,
+    job_id: insertedJob.id,
+    status: insertedJob.status,
+    queued: slotsToGenerate.length
   })
-
-  const upstreamBody = await upstream.json().catch(() => null)
-  if (!upstream.ok) {
-    return NextResponse.json(
-      { error: upstreamBody?.error || 'Bot generation failed. Check bot relay logs and endpoint.' },
-      { status: 502 }
-    )
-  }
-
-  const generated = Array.isArray(upstreamBody?.items) ? upstreamBody.items : []
-  if (generated.length === 0) {
-    return NextResponse.json({ error: 'Bot returned no items.' }, { status: 502 })
-  }
-
-  // Insert drafts
-  const rowsToInsert = generated
-    .map((it: any) => {
-      const date = typeof it.date === 'string' ? it.date : null
-      const key = typeof it.pipeline_key === 'string' ? it.pipeline_key : null
-      const content = typeof it.content === 'string' ? it.content : null
-      const title = typeof it.title === 'string' ? it.title : null
-      const scheduled_at = typeof it.scheduled_at === 'string' ? it.scheduled_at : null
-
-      if (!date || !key || !content) return null
-
-      return {
-        user_id: auth.userId,
-        date,
-        scheduled_at,
-        pipeline_key: key,
-        type: key,
-        title: title || `${key} post`,
-        content,
-        platform,
-        status: 'draft'
-      }
-    })
-    .filter(Boolean)
-
-  const { data: inserted, error: insertError } = await supabase
-    .from('content_items')
-    .insert(rowsToInsert)
-    .select('id')
-
-  if (insertError) {
-    return NextResponse.json({ error: insertError.message }, { status: 500 })
-  }
-
-  return NextResponse.json({ ok: true, generated: generated.length, inserted: inserted?.length || 0 })
 }
