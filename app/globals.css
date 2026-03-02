@@ -1,43 +1,59 @@
+:root {
+  --bg: #05070b;
+  --surface: #0d1218;
+  --surface-2: #121923;
+  --text: #dbe4ef;
+  --muted: #91a2b8;
+  --border: #253041;
+  --accent: #4f88ff;
+}
+
+html.theme-light,
+body.theme-light {
+  --bg: #d8dde3;
+  --surface: #c8ced6;
+  --surface-2: #bfc7d0;
+  --text: #1b2431;
+  --muted: #4d5a6b;
+  --border: #8f9aac;
+  --accent: #2d4f85;
+}
+
 * {
   box-sizing: border-box;
   padding: 0;
   margin: 0;
 }
 
+html,
 body {
-  background: #000;
-  color: #e5e5e5;
+  max-width: 100vw;
+  overflow-x: hidden;
+  background: var(--bg);
+  color: var(--text);
 }
 
-input, select, button {
+body {
+  transition: background-color 180ms ease, color 180ms ease;
+}
+
+input,
+select,
+textarea,
+button {
   font-family: inherit;
 }
 
-input::placeholder {
-  color: #666;
+input::placeholder,
+textarea::placeholder {
+  color: var(--muted);
 }
 
 a {
-  color: #6366f1;
-}
-
-input[type="range"] {
-  -webkit-appearance: none;
-  background: #333;
-  height: 6px;
-  border-radius: 3px;
-}
-
-input[type="range"]::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 16px;
-  height: 16px;
-  background: #6366f1;
-  border-radius: 50%;
-  cursor: pointer;
+  color: var(--accent);
 }
 
 select option {
-  background: #111;
-  color: #fff;
+  background: var(--surface);
+  color: var(--text);
 }
