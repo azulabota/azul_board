@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../lib/supabase'
 import { ui } from '../ui/styles'
+import ThemeToggle from '../theme-toggle'
 
 type Status = 'todo' | 'in_progress' | 'blocked' | 'done'
 type TopTab = 'progress' | 'dev'
@@ -361,6 +362,8 @@ export default function Dashboard() {
           </button>
         )}
         <div style={{ flex: 1 }} />
+        {!sidebarCollapsed && <div style={{ fontSize: '0.75rem', color: 'var(--muted)', marginTop: '0.25rem' }}>Theme</div>}
+        <ThemeToggle style={{ background: 'var(--surface-2)' }} />
         <button onClick={handleLogout} style={btnDanger}>
           {sidebarCollapsed ? 'OUT' : 'Logout'}
         </button>

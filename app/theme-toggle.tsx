@@ -12,7 +12,7 @@ const applyTheme = (theme: ThemeMode) => {
   document.body.classList.toggle('theme-light', isLight)
 }
 
-export default function ThemeToggle() {
+export default function ThemeToggle({ style }: { style?: React.CSSProperties }) {
   const [theme, setTheme] = useState<ThemeMode>('dark')
   const [mounted, setMounted] = useState(false)
 
@@ -37,17 +37,15 @@ export default function ThemeToggle() {
     <button
       onClick={toggleTheme}
       style={{
-        position: 'fixed',
-        top: '0.75rem',
-        right: '0.75rem',
-        zIndex: 1200,
         borderRadius: 999,
         border: '1px solid var(--border)',
         padding: '0.4rem 0.7rem',
-        background: 'var(--surface)',
+        background: 'var(--surface-2)',
         color: 'var(--text)',
         cursor: 'pointer',
-        fontSize: '0.8rem'
+        fontSize: '0.8rem',
+        width: '100%',
+        ...style
       }}
       aria-label="Toggle theme"
       title="Toggle theme"

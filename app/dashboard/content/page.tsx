@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../../lib/supabase'
 import { ui, withDisabled } from '../../ui/styles'
+import ThemeToggle from '../../theme-toggle'
 
 type ContentItem = {
   id: number
@@ -491,9 +492,44 @@ export default function ContentCalendar() {
 
   const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    router.push('/')
+  }
+
   return (
-    <div style={{ ...ui.page, padding: '1.5rem' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', gap: '1rem', flexWrap: 'wrap' }}>
+    <div style={{ ...ui.page, minHeight: '100vh', display: 'flex' }}>
+      <aside
+        style={{
+          width: 240,
+          borderRight: '1px solid var(--border)',
+          background: 'var(--surface)',
+          padding: '1rem',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '0.75rem'
+        }}
+      >
+        <strong>Sapien Eleven</strong>
+        <button onClick={() => router.push('/dashboard')} style={ui.buttonSecondary}>
+          Dashboard
+        </button>
+        <button style={{ ...ui.buttonPrimary, boxShadow: '0 0 0 1px rgba(228, 58, 75, 0.32) inset' }} disabled>
+          Calendar
+        </button>
+        <button onClick={() => router.push('/settings')} style={ui.buttonSecondary}>
+          Settings
+        </button>
+        <div style={{ flex: 1 }} />
+        <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Theme</div>
+        <ThemeToggle style={{ background: 'var(--surface-2)' }} />
+        <button onClick={handleLogout} style={ui.buttonDanger}>
+          Logout
+        </button>
+      </aside>
+
+      <div style={{ flex: 1, padding: '1.5rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', gap: '1rem', flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
           <h1 style={{ margin: 0, fontSize: '1.5rem' }}>Content Calendar</h1>
           <button
@@ -861,6 +897,7 @@ export default function ContentCalendar() {
           )}
         </div>
       )}
+      </div>
     </div>
   )
 }
