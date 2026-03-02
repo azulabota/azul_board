@@ -51,9 +51,15 @@ const stripTime = (isoOrDate: string) => isoOrDate.slice(0, 10)
 
 const execFileAsync = promisify(execFile)
 
-const buildPrompt = (slot: Slot, platform: string) => {
+const buildPrompt = (slot: Slot, platform: string, recentExamples: string[]) => {
   const date = stripTime(slot.date)
   const desc = slot.description?.trim() || `Write a ${slot.pipeline_name} post.`
+  const recentBlock = recentExamples.length
+    ? `\nRecent posts to avoid repeating (do NOT reuse phrasing/structure):\n${recentExamples
+        .slice(0, 12)
+        .map((t, i) => `- (${i + 1}) ${t}`)
+        .join('\n')}\n`
+    : ''
 
   return `You are an award-winning writer with 15 years of experience.
 Write ONE ${platform} post for the pipeline "${slot.pipeline_name}".
@@ -61,7 +67,7 @@ Date: ${date}.
 
 Pipeline instructions (follow strictly):
 ${desc}
-
+${recentBlock}
 Hard constraints:
 - Output ONLY the post text. No headings, no markdown, no quotes.
 - Make it engaging, curiosity-driven, and follower-growth oriented.
@@ -93,12 +99,36 @@ const generateDeterministicContent = (slot: Slot, platform: string) => {
   return `Good Morning — ${slot.pipeline_name} (${date}). ${desc}`
 }
 
-const generateContent = async (slot: Slot, platform: string) => {
-  const prompt = buildPrompt(slot, platform)
+const normalizeForDedupe = (s: string) =>
+  s
+    .toLowerCase()
+    .replace(/https?:\/\/\S+/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+const generateContent = async (slot: Slot, platform: string, recentExamples: string[]) => {
+  const prompt = buildPrompt(slot, platform, recentExamples)
 
   if (modelProvider === 'codex') {
     const out = await generateWithCodex(prompt)
     if (!out) throw new Error('Codex returned empty output')
+
+    // basic dedupe guard: if too similar to any recent example, try once more with stronger instruction
+    const outNorm = normalizeForDedupe(out)
+    const isTooSimilar = recentExamples.some((ex) => {
+      const exNorm = normalizeForDedupe(ex)
+      return exNorm && outNorm && (outNorm === exNorm || outNorm.includes(exNorm.slice(0, 60)))
+    })
+
+    if (isTooSimilar) {
+      const retry = await generateWithCodex(
+        prompt +
+          `\n\nYou repeated phrasing too closely. Rewrite with a completely different hook and structure while still following the pipeline instructions.`
+      )
+      return String(retry || out).trim()
+    }
+
     return out
   }
 
@@ -162,9 +192,29 @@ const processJob = async (job: GenerationJobRow) => {
   const existingSet = new Set((existingItems || []).map((r: any) => `${r.date}::${r.pipeline_key || r.type}`))
   const newSlots = slots.filter((slot) => !existingSet.has(`${stripTime(slot.date)}::${slot.pipeline_key}`))
 
+  // Pull recent posts for this pipeline to reduce repetition
+  const recentByPipeline = new Map<string, string[]>()
+  for (const key of keys) {
+    const { data: recent, error: recentErr } = await supabase
+      .from('content_items')
+      .select('content')
+      .eq('user_id', job.user_id)
+      .eq('pipeline_key', key)
+      .not('content', 'is', null)
+      .order('date', { ascending: false })
+      .limit(12)
+
+    if (recentErr) throw recentErr
+    recentByPipeline.set(
+      key,
+      (recent || []).map((r: any) => String(r.content || '').trim()).filter(Boolean)
+    )
+  }
+
   const rowsToInsert = [] as any[]
   for (const slot of newSlots) {
-    const content = await generateContent(slot, job.platform || 'X')
+    const recentExamples = recentByPipeline.get(slot.pipeline_key) || []
+    const content = await generateContent(slot, job.platform || 'X', recentExamples)
     rowsToInsert.push({
       user_id: job.user_id,
       date: stripTime(slot.date),
