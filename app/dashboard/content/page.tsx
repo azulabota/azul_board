@@ -31,6 +31,7 @@ type Pipeline = {
   description: string | null
   color: string
   days_of_week: number[]
+  is_enabled: boolean
 }
 
 const DEFAULT_PIPELINES: Array<Pick<Pipeline, 'key' | 'name' | 'description' | 'color' | 'days_of_week'>> = [
@@ -102,8 +103,8 @@ export default function ContentCalendar() {
   const [deleteToPipelineKey, setDeleteToPipelineKey] = useState('')
 
   const pipelineKeyOptions = useMemo(() => {
-    if (pipelines.length === 0) return [{ value: 'short_form', label: 'Short Form' }]
-    return pipelines.map((p) => ({ value: p.key, label: p.name }))
+    if (pipelines.length === 0) return [{ value: 'short_form', label: 'Short Form', disabled: false }]
+    return pipelines.map((p) => ({ value: p.key, label: p.name, disabled: !p.is_enabled }))
   }, [pipelines])
 
   const [newItem, setNewItem] = useState({ title: '', pipeline_key: 'short_form', content: '', platform: 'X' })
@@ -179,7 +180,7 @@ export default function ContentCalendar() {
 
     const { data, error: fetchError } = await supabase
       .from('content_pipelines')
-      .select('id, user_id, key, name, description, color, days_of_week')
+      .select('id, user_id, key, name, description, color, days_of_week, is_enabled')
       .eq('user_id', uid)
       .order('created_at', { ascending: true })
 
@@ -198,7 +199,8 @@ export default function ContentCalendar() {
         name: p.name,
         description: p.description,
         color: p.color,
-        days_of_week: p.days_of_week
+        days_of_week: p.days_of_week,
+        is_enabled: true
       }))
 
       const { error: seedError } = await supabase.from('content_pipelines').insert(payload)
@@ -209,11 +211,11 @@ export default function ContentCalendar() {
 
       const { data: seeded } = await supabase
         .from('content_pipelines')
-        .select('id, user_id, key, name, description, color, days_of_week')
+        .select('id, user_id, key, name, description, color, days_of_week, is_enabled')
         .eq('user_id', uid)
         .order('created_at', { ascending: true })
 
-      setPipelines(((seeded || []) as Pipeline[]).map((p) => ({ ...p })))
+      setPipelines(((seeded || []) as Pipeline[]).map((p) => ({ ...p, is_enabled: (p as any).is_enabled ?? true })))
       setNewItem((prev) => ({ ...prev, pipeline_key: 'short_form' }))
       return
     }
@@ -618,7 +620,15 @@ export default function ContentCalendar() {
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                   {pipelines.map((p) => (
-                    <div key={p.id} style={{ border: '1px solid var(--border)', borderRadius: '10px', padding: '0.6rem' }}>
+                    <div
+                      key={p.id}
+                      style={{
+                        border: '1px solid var(--border)',
+                        borderRadius: '10px',
+                        padding: '0.6rem',
+                        opacity: p.is_enabled ? 1 : 0.5
+                      }}
+                    >
                       <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem', alignItems: 'center' }}>
                         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                           <div style={{ width: 10, height: 10, borderRadius: '50%', background: p.color }} />
@@ -627,11 +637,36 @@ export default function ContentCalendar() {
                             <div style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>{p.key}</div>
                           </div>
                         </div>
-                        <div style={{ display: 'flex', gap: '0.4rem' }}>
-                          <button onClick={() => startEditPipeline(p)} style={ui.buttonSecondary}>
+                        <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: 'var(--muted)', fontSize: '0.85rem' }}>
+                            <input
+                              type="checkbox"
+                              checked={p.is_enabled}
+                              onChange={async (e) => {
+                                const next = e.target.checked
+                                setPipelineError('')
+                                setPipelineBusy(true)
+                                const { error: updateErr } = await supabase
+                                  .from('content_pipelines')
+                                  .update({ is_enabled: next })
+                                  .eq('id', p.id)
+                                  .eq('user_id', userId)
+
+                                if (updateErr) {
+                                  setPipelineError(updateErr.message)
+                                } else {
+                                  setPipelines((prev) => prev.map((x) => (x.id === p.id ? { ...x, is_enabled: next } : x)))
+                                }
+                                setPipelineBusy(false)
+                              }}
+                              disabled={pipelineBusy}
+                            />
+                            {p.is_enabled ? 'On' : 'Off'}
+                          </label>
+                          <button onClick={() => startEditPipeline(p)} style={ui.buttonSecondary} disabled={pipelineBusy}>
                             Edit
                           </button>
-                          <button onClick={() => deletePipeline(p)} style={ui.buttonDanger}>
+                          <button onClick={() => deletePipeline(p)} style={ui.buttonDanger} disabled={pipelineBusy}>
                             Delete
                           </button>
                         </div>
@@ -760,7 +795,16 @@ export default function ContentCalendar() {
 
       <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap' }}>
         {pipelines.map((p) => (
-          <div key={p.key} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.75rem' }}>
+          <div
+            key={p.key}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.35rem',
+              fontSize: '0.75rem',
+              opacity: p.is_enabled ? 1 : 0.5
+            }}
+          >
             <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: p.color }} />
             <span style={{ color: 'var(--muted)' }}>{p.name}</span>
           </div>
@@ -852,7 +896,9 @@ export default function ContentCalendar() {
                 style={{ ...ui.input, flex: 1 }}
               >
                 {pipelineKeyOptions.map((opt) => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  <option key={opt.value} value={opt.value} disabled={Boolean((opt as any).disabled)}>
+                    {opt.label}{(opt as any).disabled ? ' (OFF)' : ''}
+                  </option>
                 ))}
               </select>
               <select
