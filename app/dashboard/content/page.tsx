@@ -89,6 +89,7 @@ export default function ContentCalendar() {
   })
 
   const [editingPipelineId, setEditingPipelineId] = useState<number | null>(null)
+  const editPanelRef = useState<{ current: HTMLDivElement | null }>({ current: null })[0]
   const [editPipeline, setEditPipeline] = useState({
     key: '',
     name: '',
@@ -333,6 +334,11 @@ export default function ContentCalendar() {
       color: p.color,
       days: p.days_of_week || [0, 1, 2, 3, 4, 5, 6]
     })
+
+    // Bring the edit panel into view (it renders below the list)
+    setTimeout(() => {
+      editPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 50)
   }
 
   const saveEditPipeline = async () => {
@@ -696,7 +702,7 @@ export default function ContentCalendar() {
           </div>
 
           {editingPipelineId && (
-            <div style={{ ...ui.panelAlt, marginTop: '1rem', padding: '0.75rem' }}>
+            <div ref={(el) => { editPanelRef.current = el }} style={{ ...ui.panelAlt, marginTop: '1rem', padding: '0.75rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem', alignItems: 'center', marginBottom: '0.5rem' }}>
                 <h3 style={{ margin: 0, fontSize: '0.95rem' }}>Edit pipeline</h3>
                 <button onClick={() => setEditingPipelineId(null)} style={ui.buttonSecondary}>
