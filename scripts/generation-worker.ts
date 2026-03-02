@@ -40,6 +40,15 @@ type GenerationJobRow = {
   } | null
 }
 
+type CockpitJobRow = {
+  id: number
+  user_id: string
+  thread_id: number
+  prompt: string
+  selected_attachment_ids: number[] | null
+  status: 'queued' | 'running' | 'done' | 'failed'
+}
+
 const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 const modelProvider = (process.env.MODEL_PROVIDER || 'stub').toLowerCase()
@@ -201,6 +210,39 @@ const generateWithCodex = async (prompt: string) => {
   return String(stdout || '').trim()
 }
 
+const buildCockpitPrompt = ({
+  userMessage,
+  threadId,
+  attachmentLines
+}: {
+  userMessage: string
+  threadId: number
+  attachmentLines: string[]
+}) => {
+  const attachmentBlock = attachmentLines.length
+    ? `Selected attachments (signed URLs):\n${attachmentLines.map((line) => `- ${line}`).join('\n')}\n`
+    : 'Selected attachments: none\n'
+
+  return `You are Azul, the coding copilot for AzulBoard.
+Context:
+- Product: AzulBoard
+- Surface: Coding Cockpit for async "vibe coding" requests.
+- Your output should help the user implement real changes quickly.
+
+Instructions:
+- Respond with concrete, actionable engineering steps.
+- When code changes are relevant, include focused diffs/snippets the user can apply.
+- Call out assumptions, edge cases, and verification steps briefly.
+- Keep the response direct and practical.
+
+Thread ID: ${threadId}
+User request:
+${userMessage}
+
+${attachmentBlock}
+Return only the assistant response content for the cockpit chat.`
+}
+
 const generateDeterministicContent = (slot: Slot, platform: string) => {
   const date = stripTime(slot.date)
   const desc = slot.description?.trim() || `Focus on ${slot.pipeline_name}.`
@@ -360,6 +402,103 @@ const claimNextJob = async (): Promise<GenerationJobRow | null> => {
   return (claimed as GenerationJobRow | null) || null
 }
 
+const claimNextCockpitJob = async (): Promise<CockpitJobRow | null> => {
+  const { data: queuedJobs, error: readError } = await supabase
+    .from('cockpit_jobs')
+    .select('id, user_id, thread_id, prompt, selected_attachment_ids, status')
+    .eq('status', 'queued')
+    .order('created_at', { ascending: true })
+    .limit(1)
+
+  if (readError) throw readError
+  const job = (queuedJobs || [])[0] as CockpitJobRow | undefined
+  if (!job) return null
+
+  const { data: claimed, error: claimError } = await supabase
+    .from('cockpit_jobs')
+    .update({
+      status: 'running',
+      started_at: new Date().toISOString(),
+      error: null
+    })
+    .eq('id', job.id)
+    .eq('status', 'queued')
+    .select('id, user_id, thread_id, prompt, selected_attachment_ids, status')
+    .maybeSingle()
+
+  if (claimError) throw claimError
+  return (claimed as CockpitJobRow | null) || null
+}
+
+const processCockpitJob = async (job: CockpitJobRow) => {
+  const attachmentIds = Array.isArray(job.selected_attachment_ids)
+    ? job.selected_attachment_ids.map((value) => Number(value)).filter((value) => Number.isInteger(value) && value > 0)
+    : []
+
+  let attachmentLines: string[] = []
+  if (attachmentIds.length > 0) {
+    const { data: attachments, error: attachmentError } = await supabase
+      .from('cockpit_attachments')
+      .select('id, storage_path, filename, content_type, size_bytes')
+      .eq('user_id', job.user_id)
+      .eq('thread_id', job.thread_id)
+      .in('id', attachmentIds)
+
+    if (attachmentError) throw attachmentError
+
+    attachmentLines = await Promise.all(
+      (attachments || []).map(async (attachment: any) => {
+        const { data: signed, error: signedError } = await supabase.storage
+          .from('cockpit')
+          .createSignedUrl(String(attachment.storage_path || ''), 60 * 30)
+
+        const filename = attachment.filename || `attachment_${attachment.id}`
+        const contentType = attachment.content_type || 'unknown'
+        const sizeBytes = Number(attachment.size_bytes || 0)
+
+        if (signedError || !signed?.signedUrl) {
+          return `${filename} (${contentType}, ${sizeBytes} bytes): signed URL unavailable`
+        }
+        return `${filename} (${contentType}, ${sizeBytes} bytes): ${signed.signedUrl}`
+      })
+    )
+  }
+
+  const prompt = buildCockpitPrompt({
+    userMessage: job.prompt,
+    threadId: job.thread_id,
+    attachmentLines
+  })
+  const rawAssistantReply = await generateWithCodex(prompt)
+  const assistantReply = rawAssistantReply || 'I could not generate a response. Please try again.'
+
+  const { data: messageRow, error: insertMessageError } = await supabase
+    .from('cockpit_messages')
+    .insert({
+      thread_id: job.thread_id,
+      user_id: job.user_id,
+      role: 'assistant',
+      content: assistantReply
+    })
+    .select('id')
+    .single()
+
+  if (insertMessageError) throw insertMessageError
+
+  await Promise.all([
+    supabase
+      .from('cockpit_jobs')
+      .update({
+        status: 'done',
+        finished_at: new Date().toISOString(),
+        result_message_id: messageRow.id,
+        error: null
+      })
+      .eq('id', job.id),
+    supabase.from('cockpit_threads').update({ updated_at: new Date().toISOString() }).eq('id', job.thread_id).eq('user_id', job.user_id)
+  ])
+}
+
 const processJob = async (job: GenerationJobRow) => {
   const slots = Array.isArray(job.payload?.slots) ? job.payload!.slots! : []
   if (slots.length === 0) {
@@ -514,6 +653,18 @@ const failJob = async (jobId: number, reason: unknown) => {
     .eq('id', jobId)
 }
 
+const failCockpitJob = async (jobId: number, reason: unknown) => {
+  const message = reason instanceof Error ? reason.message : String(reason || 'Unknown error')
+  await supabase
+    .from('cockpit_jobs')
+    .update({
+      status: 'failed',
+      finished_at: new Date().toISOString(),
+      error: message.slice(0, 2000)
+    })
+    .eq('id', jobId)
+}
+
 const main = async () => {
   console.log(`[generation-worker] Starting worker (provider=${modelProvider}, poll=${pollIntervalMs}ms)`)
   if (modelProvider === 'openai' && !openAiApiKey) {
@@ -526,6 +677,19 @@ const main = async () => {
   // eslint-disable-next-line no-constant-condition
   while (true) {
     try {
+      const cockpitJob = await claimNextCockpitJob()
+      if (cockpitJob) {
+        console.log(`[generation-worker] Processing cockpit job #${cockpitJob.id} for user ${cockpitJob.user_id}`)
+        try {
+          await processCockpitJob(cockpitJob)
+          console.log(`[generation-worker] Completed cockpit job #${cockpitJob.id}`)
+        } catch (jobError) {
+          console.error(`[generation-worker] Failed cockpit job #${cockpitJob.id}`, jobError)
+          await failCockpitJob(cockpitJob.id, jobError)
+        }
+        continue
+      }
+
       const job = await claimNextJob()
       if (!job) {
         await sleep(pollIntervalMs)

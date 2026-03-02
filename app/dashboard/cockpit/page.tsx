@@ -67,6 +67,7 @@ export default function CodingCockpitPage() {
 
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
+  const [waitingForAssistant, setWaitingForAssistant] = useState(false)
   const [error, setError] = useState('')
   const [composer, setComposer] = useState('')
 
@@ -191,10 +192,12 @@ export default function CodingCockpitPage() {
 
     if (e) {
       setError(e.message)
-      return
+      return [] as Message[]
     }
 
-    setMessages((data || []) as Message[])
+    const rows = (data || []) as Message[]
+    setMessages(rows)
+    return rows
   }
 
   const fetchAttachments = async (threadId: number) => {
@@ -341,7 +344,9 @@ export default function CodingCockpitPage() {
       return
     }
 
-    const res = await fetch('/api/cockpit/chat', {
+    const baselineMessageId = messages.length > 0 ? Math.max(...messages.map((m) => m.id)) : 0
+
+    const res = await fetch('/api/cockpit/local-chat', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -361,9 +366,30 @@ export default function CodingCockpitPage() {
       return
     }
 
+    const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+    const threadId = activeThreadId
     setComposer('')
-    await Promise.all([fetchMessages(activeThreadId), fetchThreads()])
     setBusy(false)
+    setWaitingForAssistant(true)
+    await Promise.all([fetchMessages(threadId), fetchThreads()])
+
+    let foundAssistant = false
+    const startedAt = Date.now()
+    while (Date.now() - startedAt < 60_000) {
+      await wait(2_000)
+      const rows = await fetchMessages(threadId)
+      if (rows.some((row) => row.role === 'assistant' && row.id > baselineMessageId)) {
+        foundAssistant = true
+        break
+      }
+    }
+
+    if (!foundAssistant) {
+      setError('Azul is still processing your request. Refresh shortly to see the reply.')
+    }
+
+    setWaitingForAssistant(false)
+    await fetchThreads()
   }
 
   const saveConnection = async () => {
@@ -570,12 +596,15 @@ export default function CodingCockpitPage() {
               </div>
               <button
                 onClick={sendMessage}
-                disabled={busy || !activeThreadId || !composer.trim()}
-                style={withDisabled(ui.buttonPrimary, busy || !composer.trim())}
+                disabled={busy || waitingForAssistant || !activeThreadId || !composer.trim()}
+                style={withDisabled(ui.buttonPrimary, busy || waitingForAssistant || !composer.trim())}
               >
                 Send
               </button>
             </div>
+            {waitingForAssistant && (
+              <div style={{ color: 'var(--muted)', fontSize: '0.82rem', marginTop: '0.5rem' }}>Azul is thinking…</div>
+            )}
           </div>
         </div>
 
