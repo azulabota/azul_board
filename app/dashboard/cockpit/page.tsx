@@ -260,6 +260,7 @@ export default function CodingCockpitPage() {
       .single()
 
     if (e || !data) {
+      console.error('createThread failed', e)
       setError(e?.message || 'Failed to create thread')
       setBusy(false)
       return null
@@ -500,6 +501,15 @@ export default function CodingCockpitPage() {
 
   return (
     <div style={{ ...ui.page, padding: '1.25rem' }}>
+      <div style={{ maxWidth: 1200, margin: '0 auto', marginBottom: '0.75rem' }}>
+        {error && (
+          <div style={{ background: '#4f1d28', border: '1px solid var(--danger-border)', borderRadius: 12, padding: '0.75rem' }}>
+            <div style={{ fontWeight: 900, marginBottom: '0.25rem' }}>Coding Cockpit error</div>
+            <div style={{ color: 'var(--text)', whiteSpace: 'pre-wrap' }}>{error}</div>
+          </div>
+        )}
+      </div>
+
       <div style={{ maxWidth: 1200, margin: '0 auto', display: 'flex', gap: '1rem', alignItems: 'stretch' }}>
         {/* Threads */}
         <div style={{ width: 260, display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
