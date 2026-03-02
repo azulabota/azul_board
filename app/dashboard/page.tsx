@@ -7,7 +7,7 @@ import { ui } from '../ui/styles'
 import ThemeToggle from '../theme-toggle'
 
 type Status = 'todo' | 'in_progress' | 'blocked' | 'done'
-type TopTab = 'progress' | 'dev'
+type TopTab = 'progress' | 'cockpit'
 
 interface Milestone {
   id: number
@@ -70,7 +70,7 @@ export default function Dashboard() {
   const [topTab, setTopTab] = useState<TopTab>(() => {
     if (typeof window === 'undefined') return 'progress'
     const stored = window.localStorage.getItem('azul-dashboard-tab')
-    return stored === 'dev' ? 'dev' : 'progress'
+    return stored === 'cockpit' ? 'cockpit' : 'progress'
   })
 
   const [milestones, setMilestones] = useState<Milestone[]>([])
@@ -382,12 +382,12 @@ export default function Dashboard() {
           </button>
           <button
             onClick={() => {
-              window.localStorage.setItem('azul-dashboard-tab', 'dev')
-              setTopTab('dev')
+              window.localStorage.setItem('azul-dashboard-tab', 'cockpit')
+              setTopTab('cockpit')
             }}
-            style={topTab === 'dev' ? tabActive : tabIdle}
+            style={topTab === 'cockpit' ? tabActive : tabIdle}
           >
-            Dev/Coder
+            Coding Cockpit
           </button>
         </div>
 
@@ -618,18 +618,13 @@ export default function Dashboard() {
           </div>
         )}
 
-        {topTab === 'dev' && (
-          <section style={{ ...panelStyle, maxWidth: 900 }}>
-            <h3 style={{ marginTop: 0 }}>Dev/Coder</h3>
-            <p style={{ color: 'var(--muted)', marginBottom: '0.8rem' }}>
-              Use Progress as the command center for issues and updates. This tab is reserved for coder-focused tools and can be extended without changing routes.
-            </p>
-            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-              <button onClick={() => setTopTab('progress')} style={btnPrimary}>Open Progress</button>
-              <button onClick={() => router.push('/dashboard/content')} style={btnSecondary} disabled={!canUseScheduler}>
-                Open Calendar
-              </button>
-            </div>
+        {topTab === 'cockpit' && (
+          <section style={{ ...panelStyle, padding: 0, overflow: 'hidden' }}>
+            <iframe
+              src="/dashboard/cockpit"
+              style={{ width: '100%', height: '78vh', border: 'none' }}
+              title="Coding Cockpit"
+            />
           </section>
         )}
       </main>
