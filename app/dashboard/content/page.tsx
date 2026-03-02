@@ -96,6 +96,7 @@ export default function ContentCalendar() {
   const [pipelineBusy, setPipelineBusy] = useState(false)
   const [pipelineError, setPipelineError] = useState('')
   const [generationJob, setGenerationJob] = useState<GenerationJobState | null>(null)
+  const [generationDays, setGenerationDays] = useState<7 | 14 | 30>(7)
 
   const [newPipeline, setNewPipeline] = useState({
     key: '',
@@ -921,7 +922,20 @@ export default function ContentCalendar() {
                     </div>
                   </div>
 
-                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: 'var(--muted)', fontSize: '0.85rem' }}>
+                      Days
+                      <select
+                        value={generationDays}
+                        onChange={(e) => setGenerationDays(Number(e.target.value) as 7 | 14 | 30)}
+                        style={{ ...ui.input, minWidth: '6rem', padding: '0.4rem 0.5rem' }}
+                        disabled={pipelineBusy}
+                      >
+                        <option value={7}>7</option>
+                        <option value={14}>14</option>
+                        <option value={30}>30</option>
+                      </select>
+                    </label>
                     <button
                       onClick={() => void saveEditPipeline()}
                       disabled={pipelineBusy}
@@ -951,7 +965,7 @@ export default function ContentCalendar() {
                             'Content-Type': 'application/json',
                             Authorization: `Bearer ${token}`
                           },
-                          body: JSON.stringify({ pipeline_key: editPipeline.key, days: 7, platform: 'X' })
+                          body: JSON.stringify({ pipeline_key: editPipeline.key, days: generationDays, platform: 'X' })
                         })
 
                         const payload = await res.json().catch(() => null)
@@ -985,7 +999,7 @@ export default function ContentCalendar() {
                       disabled={pipelineBusy}
                       style={withDisabled({ ...ui.buttonPrimary, flex: 1, padding: '0.55rem' }, pipelineBusy)}
                     >
-                      {pipelineBusy ? 'Queueing…' : 'Generate 7 days'}
+                      {pipelineBusy ? 'Queueing…' : `Generate ${generationDays} days`}
                     </button>
                   </div>
                   {generationJob && (

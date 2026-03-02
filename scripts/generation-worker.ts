@@ -51,12 +51,12 @@ const stripTime = (isoOrDate: string) => isoOrDate.slice(0, 10)
 
 const execFileAsync = promisify(execFile)
 
-const buildPrompt = (slot: Slot, platform: string, recentExamples: string[]) => {
+const buildPrompt = (slot: Slot, platform: string, recentExamples: string[], extraInstruction = '') => {
   const date = stripTime(slot.date)
   const desc = slot.description?.trim() || `Write a ${slot.pipeline_name} post.`
   const recentBlock = recentExamples.length
     ? `\nRecent posts to avoid repeating (do NOT reuse phrasing/structure):\n${recentExamples
-        .slice(0, 12)
+        .slice(0, 20)
         .map((t, i) => `- (${i + 1}) ${t}`)
         .join('\n')}\n`
     : ''
@@ -74,8 +74,47 @@ Hard constraints:
 - Avoid repeating common phrases; make it feel fresh for this date.
 - Keep it concise and platform-appropriate.
 - If the instructions say to start with specific words (e.g., "Good Morning"), do it.
+${extraInstruction ? `- ${extraInstruction}` : ''}
 
 Return just the final post.`
+}
+
+const buildBatchPrompt = (slots: Slot[], platform: string, recentExamples: string[]) => {
+  const first = slots[0]
+  const desc = first.description?.trim() || `Write ${first.pipeline_name} posts.`
+  const scheduleBlock = slots
+    .map((slot, i) => {
+      const scheduledAt = slot.scheduled_at || `${stripTime(slot.date)}T09:00:00`
+      return `${i + 1}. date=${stripTime(slot.date)} scheduled_at=${scheduledAt}`
+    })
+    .join('\n')
+  const recentBlock = recentExamples.length
+    ? `Recent pipeline posts to avoid reusing (last ${Math.min(20, recentExamples.length)}):\n${recentExamples
+        .slice(0, 20)
+        .map((t, i) => `- (${i + 1}) ${t}`)
+        .join('\n')}\n`
+    : ''
+
+  return `You are an award-winning writer with 15 years of experience.
+Create ${slots.length} distinct ${platform} posts for pipeline "${first.pipeline_name}" (${first.pipeline_key}).
+
+Pipeline instructions:
+${desc}
+
+Target slots:
+${scheduleBlock}
+
+${recentBlock}Hard constraints:
+- Output STRICT JSON only with no markdown and no extra text.
+- Schema: {"items":[{"date":"YYYY-MM-DD","scheduled_at":"YYYY-MM-DDTHH:MM:SS|null","pipeline_key":"string","content":"string","title":"string (optional)"}]}
+- Return exactly ${slots.length} items, one per target date, all with pipeline_key "${first.pipeline_key}".
+- Rotate hook types across the batch (question, bold statement, contrarian take, personal observation, data point, challenge).
+- Avoid repeated phrases/openings and avoid similar sentence structure between items.
+- Do not reuse language from recent posts.
+- No duplicates or near-duplicates within this batch.
+- Keep content concise and platform-appropriate.
+
+Return only valid JSON.`
 }
 
 const generateWithCodex = async (prompt: string) => {
@@ -107,8 +146,71 @@ const normalizeForDedupe = (s: string) =>
     .replace(/\s+/g, ' ')
     .trim()
 
-const generateContent = async (slot: Slot, platform: string, recentExamples: string[]) => {
-  const prompt = buildPrompt(slot, platform, recentExamples)
+const tokenSet = (s: string) => new Set(normalizeForDedupe(s).split(' ').filter((t) => t.length > 2))
+
+const jaccard = (a: Set<string>, b: Set<string>) => {
+  if (a.size === 0 || b.size === 0) return 0
+  let inter = 0
+  a.forEach((v) => {
+    if (b.has(v)) inter += 1
+  })
+  const union = a.size + b.size - inter
+  return union === 0 ? 0 : inter / union
+}
+
+const isNearDuplicate = (a: string, b: string) => {
+  const an = normalizeForDedupe(a)
+  const bn = normalizeForDedupe(b)
+  if (!an || !bn) return false
+  if (an === bn) return true
+  if (an.length >= 80 && bn.length >= 80 && (an.includes(bn.slice(0, 80)) || bn.includes(an.slice(0, 80)))) return true
+  return jaccard(tokenSet(an), tokenSet(bn)) >= 0.82
+}
+
+const parseBatchJson = (raw: string): Array<{ date: string; scheduled_at: string | null; pipeline_key: string; content: string; title?: string }> | null => {
+  const trimmed = String(raw || '').trim()
+  if (!trimmed) return null
+
+  const candidates = [trimmed]
+  const codeFenceMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i)
+  if (codeFenceMatch?.[1]) candidates.push(codeFenceMatch[1].trim())
+  const firstBrace = trimmed.indexOf('{')
+  const lastBrace = trimmed.lastIndexOf('}')
+  if (firstBrace >= 0 && lastBrace > firstBrace) candidates.push(trimmed.slice(firstBrace, lastBrace + 1))
+
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate) as { items?: Array<Record<string, unknown>> }
+      if (!Array.isArray(parsed.items)) continue
+      const items = parsed.items
+        .map((item) => {
+          const date = typeof item.date === 'string' ? stripTime(item.date) : ''
+          const scheduledAtRaw = item.scheduled_at
+          const scheduled_at =
+            scheduledAtRaw == null ? null : typeof scheduledAtRaw === 'string' ? scheduledAtRaw.trim() || null : null
+          const pipelineKey = typeof item.pipeline_key === 'string' ? item.pipeline_key.trim() : ''
+          const content = typeof item.content === 'string' ? item.content.trim() : ''
+          const title = typeof item.title === 'string' ? item.title.trim() : undefined
+          if (!date || !pipelineKey || !content) return null
+          return { date, scheduled_at, pipeline_key: pipelineKey, content, title }
+        })
+        .filter(Boolean) as Array<{ date: string; scheduled_at: string | null; pipeline_key: string; content: string; title?: string }>
+      if (items.length > 0) return items
+    } catch {
+      // try next candidate
+    }
+  }
+
+  return null
+}
+
+const generateContent = async (
+  slot: Slot,
+  platform: string,
+  recentExamples: string[],
+  extraInstruction = ''
+) => {
+  const prompt = buildPrompt(slot, platform, recentExamples, extraInstruction)
 
   if (modelProvider === 'codex') {
     const out = await generateWithCodex(prompt)
@@ -134,6 +236,31 @@ const generateContent = async (slot: Slot, platform: string, recentExamples: str
 
   // TODO: add openai provider support here if needed.
   return generateDeterministicContent(slot, platform)
+}
+
+const generateBatchForPipelineCodex = async (
+  slots: Slot[],
+  platform: string,
+  recentExamples: string[]
+) => {
+  const raw = await generateWithCodex(buildBatchPrompt(slots, platform, recentExamples))
+  const parsedItems = parseBatchJson(raw)
+  if (!parsedItems) return null
+
+  const byDate = new Map(parsedItems.map((item) => [stripTime(item.date), item]))
+  const resolved = slots.map((slot) => {
+    const item = byDate.get(stripTime(slot.date))
+    if (!item) return null
+    if (item.pipeline_key !== slot.pipeline_key) return null
+    return {
+      slot,
+      title: item.title || `${slot.pipeline_name} post`,
+      content: item.content
+    }
+  })
+
+  if (resolved.some((r) => !r)) return null
+  return resolved as Array<{ slot: Slot; title: string; content: string }>
 }
 
 const claimNextJob = async (): Promise<GenerationJobRow | null> => {
@@ -202,7 +329,7 @@ const processJob = async (job: GenerationJobRow) => {
       .eq('pipeline_key', key)
       .not('content', 'is', null)
       .order('date', { ascending: false })
-      .limit(12)
+      .limit(20)
 
     if (recentErr) throw recentErr
     recentByPipeline.set(
@@ -212,20 +339,76 @@ const processJob = async (job: GenerationJobRow) => {
   }
 
   const rowsToInsert = [] as any[]
+  const platform = job.platform || 'X'
+  const slotsByPipeline = new Map<string, Slot[]>()
   for (const slot of newSlots) {
-    const recentExamples = recentByPipeline.get(slot.pipeline_key) || []
-    const content = await generateContent(slot, job.platform || 'X', recentExamples)
-    rowsToInsert.push({
-      user_id: job.user_id,
-      date: stripTime(slot.date),
-      scheduled_at: slot.scheduled_at || null,
-      pipeline_key: slot.pipeline_key,
-      type: slot.pipeline_key,
-      title: `${slot.pipeline_name} post`,
-      content,
-      platform: job.platform || 'X',
-      status: 'draft'
-    })
+    const list = slotsByPipeline.get(slot.pipeline_key) || []
+    list.push(slot)
+    slotsByPipeline.set(slot.pipeline_key, list)
+  }
+
+  for (const pipelineKey of Array.from(slotsByPipeline.keys())) {
+    const pipelineSlots = slotsByPipeline.get(pipelineKey) || []
+    const recentExamples = recentByPipeline.get(pipelineKey) || []
+    const sortedSlots = [...pipelineSlots].sort((a, b) => stripTime(a.date).localeCompare(stripTime(b.date)))
+    let generated = [] as Array<{ slot: Slot; title: string; content: string }>
+
+    if (modelProvider === 'codex') {
+      try {
+        const batchGenerated = await generateBatchForPipelineCodex(sortedSlots, platform, recentExamples)
+        if (batchGenerated) generated = batchGenerated
+      } catch (err) {
+        console.warn(`[generation-worker] Batch generation failed for pipeline ${pipelineKey}; falling back`, err)
+      }
+    }
+
+    if (generated.length === 0) {
+      for (const slot of sortedSlots) {
+        const content = await generateContent(slot, platform, recentExamples)
+        generated.push({ slot, title: `${slot.pipeline_name} post`, content })
+      }
+    }
+
+    // One regen pass for near-duplicates in the generated batch.
+    const regenIndexes: number[] = []
+    for (let i = 0; i < generated.length; i += 1) {
+      for (let j = i + 1; j < generated.length; j += 1) {
+        if (isNearDuplicate(generated[i].content, generated[j].content)) {
+          if (!regenIndexes.includes(j)) regenIndexes.push(j)
+        }
+      }
+    }
+
+    if (regenIndexes.length > 0) {
+      for (const idx of regenIndexes) {
+        const target = generated[idx]
+        const avoidTexts = [
+          ...recentExamples,
+          ...generated.filter((_, i) => i !== idx).map((g) => g.content)
+        ]
+        const refreshed = await generateContent(
+          target.slot,
+          platform,
+          avoidTexts.slice(0, 20),
+          'Use a clearly different hook type and sentence structure than all prior examples.'
+        )
+        generated[idx] = { ...target, content: refreshed }
+      }
+    }
+
+    for (const item of generated) {
+      rowsToInsert.push({
+        user_id: job.user_id,
+        date: stripTime(item.slot.date),
+        scheduled_at: item.slot.scheduled_at || null,
+        pipeline_key: item.slot.pipeline_key,
+        type: item.slot.pipeline_key,
+        title: item.title || `${item.slot.pipeline_name} post`,
+        content: item.content,
+        platform,
+        status: 'draft'
+      })
+    }
   }
 
   if (rowsToInsert.length > 0) {

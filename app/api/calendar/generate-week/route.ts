@@ -138,6 +138,7 @@ export async function POST(request: NextRequest) {
       days,
       platform,
       payload: {
+        days,
         slots: slotsToGenerate,
         instructions
       }
