@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
+import { cleanupExpiredCockpitThreads } from './cockpit-cleanup-inline'
 
 type Slot = {
   date: string
@@ -55,6 +56,8 @@ const modelProvider = (process.env.MODEL_PROVIDER || 'stub').toLowerCase()
 const codexModel = process.env.CODEX_MODEL || ''
 const openAiApiKey = process.env.OPENAI_API_KEY || ''
 const pollIntervalMs = Math.max(500, Number(process.env.GENERATION_WORKER_POLL_MS || 2000))
+const weeklyCleanupEnabled = (process.env.COCKPIT_WEEKLY_CLEANUP || 'true').toLowerCase() !== 'false'
+const weeklyCleanupEnabled = (process.env.COCKPIT_WEEKLY_CLEANUP || 'true').toLowerCase() !== 'false'
 
 if (!supabaseUrl || !serviceRoleKey) {
   throw new Error('Missing SUPABASE_URL (or NEXT_PUBLIC_SUPABASE_URL) and/or SUPABASE_SERVICE_ROLE_KEY')
@@ -440,7 +443,6 @@ const processCockpitJob = async (job: CockpitJobRow) => {
     const { data: attachments, error: attachmentError } = await supabase
       .from('cockpit_attachments')
       .select('id, storage_path, filename, content_type, size_bytes')
-      .eq('user_id', job.user_id)
       .eq('thread_id', job.thread_id)
       .in('id', attachmentIds)
 
@@ -495,7 +497,7 @@ const processCockpitJob = async (job: CockpitJobRow) => {
         error: null
       })
       .eq('id', job.id),
-    supabase.from('cockpit_threads').update({ updated_at: new Date().toISOString() }).eq('id', job.thread_id).eq('user_id', job.user_id)
+    supabase.from('cockpit_threads').update({ updated_at: new Date().toISOString() }).eq('id', job.thread_id)
   ])
 }
 
