@@ -580,7 +580,49 @@ export default function ContentCalendar() {
 
       {showManagePipelines && (
         <div style={{ ...ui.panel, padding: '1rem', marginBottom: '1rem' }}>
-          <h2 style={{ marginTop: 0, fontSize: '1.1rem' }}>Pipelines</h2>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            <h2 style={{ marginTop: 0, fontSize: '1.1rem' }}>Pipelines</h2>
+            <button
+              onClick={async () => {
+                setPipelineError('')
+                setPipelineBusy(true)
+                const {
+                  data: { session }
+                } = await supabase.auth.getSession()
+
+                const token = session?.access_token
+                if (!token) {
+                  setPipelineError('Session expired. Please sign in again.')
+                  setPipelineBusy(false)
+                  return
+                }
+
+                const res = await fetch('/api/calendar/generate-week', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`
+                  },
+                  body: JSON.stringify({ days: 7, platform: 'X' })
+                })
+
+                const payload = await res.json().catch(() => null)
+                if (!res.ok) {
+                  setPipelineError(payload?.error || 'Failed to generate')
+                  setPipelineBusy(false)
+                  return
+                }
+
+                await loadItems(userId)
+                setPipelineBusy(false)
+                alert(`Generated ${payload?.inserted || 0} drafts`) 
+              }}
+              style={withDisabled(ui.buttonPrimary, pipelineBusy)}
+              disabled={pipelineBusy}
+            >
+              {pipelineBusy ? 'Generating…' : 'Generate 7 days (ON pipelines)'}
+            </button>
+          </div>
           <p style={{ marginTop: 0, color: 'var(--muted)', fontSize: '0.9rem' }}>
             Pipelines control your posting categories (name, color, and which days you intend to post them).
           </p>
@@ -825,13 +867,55 @@ export default function ContentCalendar() {
                     </div>
                   </div>
 
-                  <button
-                    onClick={() => void saveEditPipeline()}
-                    disabled={pipelineBusy}
-                    style={withDisabled({ ...ui.buttonSuccess, width: '100%', padding: '0.55rem' }, pipelineBusy)}
-                  >
-                    {pipelineBusy ? 'Saving...' : 'Save changes'}
-                  </button>
+                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    <button
+                      onClick={() => void saveEditPipeline()}
+                      disabled={pipelineBusy}
+                      style={withDisabled({ ...ui.buttonSuccess, flex: 1, padding: '0.55rem' }, pipelineBusy)}
+                    >
+                      {pipelineBusy ? 'Saving...' : 'Save changes'}
+                    </button>
+                    <button
+                      onClick={async () => {
+                        setPipelineError('')
+                        setPipelineBusy(true)
+                        const {
+                          data: { session }
+                        } = await supabase.auth.getSession()
+
+                        const token = session?.access_token
+                        if (!token) {
+                          setPipelineError('Session expired. Please sign in again.')
+                          setPipelineBusy(false)
+                          return
+                        }
+
+                        const res = await fetch('/api/calendar/generate-week', {
+                          method: 'POST',
+                          headers: {
+                            'Content-Type': 'application/json',
+                            Authorization: `Bearer ${token}`
+                          },
+                          body: JSON.stringify({ pipeline_key: editPipeline.key, days: 7, platform: 'X' })
+                        })
+
+                        const payload = await res.json().catch(() => null)
+                        if (!res.ok) {
+                          setPipelineError(payload?.error || 'Failed to generate')
+                          setPipelineBusy(false)
+                          return
+                        }
+
+                        await loadItems(userId)
+                        setPipelineBusy(false)
+                        alert(`Generated ${payload?.inserted || 0} drafts`) 
+                      }}
+                      disabled={pipelineBusy}
+                      style={withDisabled({ ...ui.buttonPrimary, flex: 1, padding: '0.55rem' }, pipelineBusy)}
+                    >
+                      {pipelineBusy ? 'Generating…' : 'Generate 7 days'}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
