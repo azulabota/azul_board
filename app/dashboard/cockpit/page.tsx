@@ -152,6 +152,15 @@ export default function CodingCockpitPage() {
     if (!activeThreadId && rows.length) {
       setActiveThreadId(rows[0].id)
       await Promise.all([fetchMessages(rows[0].id), fetchAttachments(rows[0].id)])
+      return
+    }
+
+    // Auto-create a first thread for better UX
+    if (!activeThreadId && rows.length === 0) {
+      const created = await createThread('General')
+      if (created) {
+        await Promise.all([fetchMessages(created.id), fetchAttachments(created.id)])
+      }
     }
   }
 
@@ -219,21 +228,21 @@ export default function CodingCockpitPage() {
     setBotBaseUrl(next.bot_base_url)
   }
 
-  const createThread = async () => {
+  const createThread = async (title?: string) => {
     setBusy(true)
     setError('')
 
-    const title = `Thread ${new Date().toLocaleString()}`
+    const finalTitle = (title || '').trim() || `Thread ${new Date().toLocaleString()}`
     const { data, error: e } = await supabase
       .from('cockpit_threads')
-      .insert({ user_id: account!.id, title })
+      .insert({ user_id: account!.id, title: finalTitle })
       .select('id, title, updated_at, created_at')
       .single()
 
     if (e || !data) {
       setError(e?.message || 'Failed to create thread')
       setBusy(false)
-      return
+      return null
     }
 
     setThreads((prev) => [data as Thread, ...prev])
@@ -242,6 +251,7 @@ export default function CodingCockpitPage() {
     setAttachments([])
     setSelectedAttachmentIds(new Set())
     setBusy(false)
+    return data as Thread
   }
 
   const handleSelectThread = async (threadId: number) => {
@@ -441,7 +451,7 @@ export default function CodingCockpitPage() {
           <button onClick={() => router.push('/dashboard')} style={ui.buttonSecondary}>
             Back
           </button>
-          <button onClick={createThread} style={withDisabled(ui.buttonPrimary, busy)} disabled={busy}>
+          <button onClick={() => void createThread()} style={withDisabled(ui.buttonPrimary, busy)} disabled={busy}>
             + New thread
           </button>
           <div style={{ ...ui.panel, padding: '0.5rem', overflow: 'auto', flex: 1 }}>
@@ -547,9 +557,56 @@ export default function CodingCockpitPage() {
             <input value={botBaseUrl} onChange={(e) => setBotBaseUrl(e.target.value)} placeholder="Bot base URL (https://...)" style={{ ...ui.input, width: '100%', marginBottom: '0.5rem' }} />
             <input value={botToken} onChange={(e) => setBotToken(e.target.value)} placeholder={connection?.has_bot_token ? 'Bot token (saved) — paste to replace' : 'Bot token'} style={{ ...ui.input, width: '100%', marginBottom: '0.5rem' }} />
             <input value={openAiKey} onChange={(e) => setOpenAiKey(e.target.value)} placeholder={connection?.has_openai_key ? 'OpenAI key (saved) — optional, paste to replace' : 'OpenAI key (optional fallback)'} style={{ ...ui.input, width: '100%', marginBottom: '0.5rem' }} />
-            <button onClick={saveConnection} disabled={savingConnection} style={withDisabled(ui.buttonPrimary, savingConnection)}>
-              {savingConnection ? 'Saving…' : 'Save'}
-            </button>
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <button onClick={saveConnection} disabled={savingConnection} style={withDisabled(ui.buttonPrimary, savingConnection)}>
+                {savingConnection ? 'Saving…' : 'Save'}
+              </button>
+              <button
+                type="button"
+                disabled={savingConnection || busy}
+                style={withDisabled(ui.buttonSecondary, savingConnection || busy)}
+                onClick={async () => {
+                  setBusy(true)
+                  setError('')
+
+                  const {
+                    data: { session }
+                  } = await supabase.auth.getSession()
+
+                  const token = session?.access_token
+                  if (!token) {
+                    setError('Session expired. Please sign in again.')
+                    setBusy(false)
+                    return
+                  }
+
+                  const res = await fetch('/api/cockpit/connection/test', {
+                    method: 'POST',
+                    headers: {
+                      Authorization: `Bearer ${token}`
+                    }
+                  })
+
+                  const payload = await res.json().catch(() => null)
+                  if (!res.ok) {
+                    setError(payload?.error || 'Bot connection test failed')
+                    setBusy(false)
+                    return
+                  }
+
+                  if (payload?.ok) {
+                    setError('')
+                    alert('Bot connection OK')
+                  } else {
+                    setError(payload?.error || 'Bot connection test failed')
+                  }
+
+                  setBusy(false)
+                }}
+              >
+                Test
+              </button>
+            </div>
           </div>
 
           <div style={{ ...ui.panel, padding: '0.75rem', flex: 1, overflow: 'auto' }}>
