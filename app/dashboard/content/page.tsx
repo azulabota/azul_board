@@ -713,7 +713,11 @@ export default function ContentCalendar() {
                               // (We keep generation behind the explicit Generate button for safety.)
                               startEditPipeline(p)
                             }}
-                            style={ui.buttonGhost}
+                            style={{
+                              ...ui.buttonGhost,
+                              border: '1px solid rgba(96, 165, 250, 0.85)',
+                              boxShadow: '0 0 0 1px rgba(96, 165, 250, 0.18) inset'
+                            }}
                             disabled={pipelineBusy}
                             title="Open this pipeline and generate next 7 days"
                           >
