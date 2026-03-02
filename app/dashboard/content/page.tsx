@@ -364,6 +364,20 @@ export default function ContentCalendar() {
     setContentItems((prev) => prev.filter((item) => item.id !== id))
   }
 
+  const copyForScheduler = async (item: ContentItem) => {
+    try {
+      const pipeline = pipelineByKey.get(item.pipeline_key || item.type)
+      const header = `${item.platform}${pipeline ? ` • ${pipeline.name}` : ''}`
+      const when = item.scheduled_at ? `Scheduled: ${new Date(item.scheduled_at).toLocaleString()}` : `Date: ${item.date}`
+      const text = [header, when, '', item.content || item.title].join('\n')
+
+      await navigator.clipboard.writeText(text)
+      alert('Copied to clipboard')
+    } catch {
+      alert('Copy failed. Your browser may have blocked clipboard access.')
+    }
+  }
+
   const createPipeline = async () => {
     if (!userId) return
     setPipelineBusy(true)
@@ -1151,7 +1165,10 @@ export default function ContentCalendar() {
                       <div style={{ fontWeight: 600 }}>{item.title}</div>
                       <div style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>{item.platform}{pipeline ? ` • ${pipeline.name}` : ''}</div>
                     </div>
-                    <button onClick={() => deleteContent(item.id)} style={ui.buttonDanger}>Delete</button>
+                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      <button onClick={() => void copyForScheduler(item)} style={ui.buttonGhost}>Copy</button>
+                      <button onClick={() => deleteContent(item.id)} style={ui.buttonDanger}>Delete</button>
+                    </div>
                   </div>
                   {item.content && <div style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: 'var(--text)' }}>{item.content}</div>}
                 </div>
