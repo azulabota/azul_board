@@ -66,6 +66,8 @@ After that, log in and visit `/admin`.
 
 #### Supabase setup
 - Run migration: `supabase/migrations/006_coding_cockpit.sql`
+- Run migration: `supabase/migrations/010_cockpit_jobs.sql`
+- Run migration: `supabase/migrations/011_cockpit_threads_members.sql`
 - Create a **private** Supabase Storage bucket named: `cockpit`
   - Uploads are stored under `<userId>/<threadId>/...`
 
@@ -76,7 +78,14 @@ After that, log in and visit `/admin`.
 
 #### Upload retention
 - Attachments are marked with `expires_at = now + 30 days`.
-- (Cleanup automation can be added later; for now it’s metadata + manual cleanup.)
+- Archived threads are hidden by default in UI and set to auto-delete after 14 days.
+- Run cleanup script periodically (cron/launchd/GitHub Action):
+
+```bash
+npm run cockpit:cleanup
+```
+
+- Required env vars for cleanup: `SUPABASE_URL` (or `NEXT_PUBLIC_SUPABASE_URL`) and `SUPABASE_SERVICE_ROLE_KEY`.
 
 ### Async generation worker (Mac mini)
 

@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "worker:generation": "npx tsx scripts/generation-worker.ts"
+    "worker:generation": "npx tsx scripts/generation-worker.ts",
+    "cockpit:cleanup": "npx tsx scripts/cockpit-cleanup.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",

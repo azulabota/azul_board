@@ -10,6 +10,8 @@ type Thread = {
   title: string | null
   updated_at: string
   created_at: string
+  archived_at: string | null
+  delete_after: string | null
 }
 
 type Message = {
@@ -51,6 +53,22 @@ type AnnotationData = {
   rects: Rect[]
 }
 
+type ThreadMemberRole = 'owner' | 'member'
+
+type ThreadMember = {
+  id: number
+  thread_id: number
+  user_id: string
+  role: ThreadMemberRole
+  created_at: string
+  email?: string | null
+}
+
+type ApprovedUser = {
+  id: string
+  email: string | null
+}
+
 const addDays = (days: number) => new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString()
 
 export default function CodingCockpitPage() {
@@ -61,9 +79,18 @@ export default function CodingCockpitPage() {
 
   const [threads, setThreads] = useState<Thread[]>([])
   const [activeThreadId, setActiveThreadId] = useState<number | null>(null)
+  const [threadRoles, setThreadRoles] = useState<Record<number, ThreadMemberRole>>({})
   const [messages, setMessages] = useState<Message[]>([])
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [selectedAttachmentIds, setSelectedAttachmentIds] = useState<Set<number>>(new Set())
+  const [showArchived, setShowArchived] = useState(false)
+  const [renamingThreadId, setRenamingThreadId] = useState<number | null>(null)
+  const [renameTitle, setRenameTitle] = useState('')
+  const [membersThread, setMembersThread] = useState<Thread | null>(null)
+  const [threadMembers, setThreadMembers] = useState<ThreadMember[]>([])
+  const [approvedUsers, setApprovedUsers] = useState<ApprovedUser[]>([])
+  const [newMemberUserId, setNewMemberUserId] = useState('')
+  const [membersBusy, setMembersBusy] = useState(false)
 
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -87,6 +114,12 @@ export default function CodingCockpitPage() {
     void initialize()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    if (!account || account.status !== 'active' || !account.canUseDevDashboard) return
+    void fetchThreads(account.id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showArchived])
 
   const initialize = async () => {
     setLoading(true)
@@ -144,7 +177,7 @@ export default function CodingCockpitPage() {
         return
       }
 
-      await Promise.all([fetchThreads(), fetchConnection()])
+      await Promise.all([fetchThreads(acct.id), fetchConnection()])
     } catch (e: any) {
       setError(e?.message || 'Coding Cockpit failed to initialize')
     } finally {
@@ -152,12 +185,18 @@ export default function CodingCockpitPage() {
     }
   }
 
-  const fetchThreads = async () => {
-    const { data, error: e } = await supabase
+  const fetchThreads = async (userId?: string) => {
+    let query = supabase
       .from('cockpit_threads')
-      .select('id, title, updated_at, created_at')
+      .select('id, title, updated_at, created_at, archived_at, delete_after')
       .order('updated_at', { ascending: false })
-      .limit(50)
+      .limit(100)
+
+    if (!showArchived) {
+      query = query.is('archived_at', null)
+    }
+
+    const { data, error: e } = await query
 
     if (e) {
       setError(e.message)
@@ -167,18 +206,38 @@ export default function CodingCockpitPage() {
     const rows = ((data || []) as Array<Thread | null>).filter(Boolean) as Thread[]
     setThreads(rows)
 
-    if (!activeThreadId && rows.length) {
-      setActiveThreadId(rows[0].id)
-      await Promise.all([fetchMessages(rows[0].id), fetchAttachments(rows[0].id)])
+    const accountId = userId || account?.id
+    if (accountId) {
+      const { data: roleRows, error: roleError } = await supabase
+        .from('cockpit_thread_members')
+        .select('thread_id, role')
+        .eq('user_id', accountId)
+
+      if (roleError) {
+        setError(roleError.message)
+      } else {
+        const nextRoles: Record<number, ThreadMemberRole> = {}
+        for (const row of roleRows || []) {
+          const threadId = Number((row as any).thread_id)
+          const role = ((row as any).role || 'member') as ThreadMemberRole
+          if (Number.isInteger(threadId)) nextRoles[threadId] = role
+        }
+        setThreadRoles(nextRoles)
+      }
+    }
+
+    if (rows.length === 0) {
+      setActiveThreadId(null)
+      setMessages([])
+      setAttachments([])
       return
     }
 
-    // Auto-create a first thread for better UX
-    if (!activeThreadId && rows.length === 0) {
-      const created = await createThread('General')
-      if (created) {
-        await Promise.all([fetchMessages(created.id), fetchAttachments(created.id)])
-      }
+    const nextActiveId = activeThreadId && rows.some((row) => row.id === activeThreadId) ? activeThreadId : rows[0].id
+    if (nextActiveId !== activeThreadId) {
+      setActiveThreadId(nextActiveId)
+      setSelectedAttachmentIds(new Set())
+      await Promise.all([fetchMessages(nextActiveId), fetchAttachments(nextActiveId)])
     }
   }
 
@@ -256,7 +315,7 @@ export default function CodingCockpitPage() {
     const { data, error: e } = await supabase
       .from('cockpit_threads')
       .insert({ user_id: account!.id, title: finalTitle })
-      .select('id, title, updated_at, created_at')
+      .select('id, title, updated_at, created_at, archived_at, delete_after')
       .single()
 
     if (e || !data) {
@@ -271,6 +330,7 @@ export default function CodingCockpitPage() {
     setMessages([])
     setAttachments([])
     setSelectedAttachmentIds(new Set())
+    setThreadRoles((prev) => ({ ...prev, [(data as Thread).id]: 'owner' }))
     setBusy(false)
     return data as Thread
   }
@@ -279,6 +339,157 @@ export default function CodingCockpitPage() {
     setActiveThreadId(threadId)
     setSelectedAttachmentIds(new Set())
     await Promise.all([fetchMessages(threadId), fetchAttachments(threadId)])
+  }
+
+  const startRenameThread = (thread: Thread) => {
+    setRenamingThreadId(thread.id)
+    setRenameTitle(thread.title || `Thread ${thread.id}`)
+  }
+
+  const saveRenameThread = async (threadId: number) => {
+    const nextTitle = renameTitle.trim()
+    if (!nextTitle) {
+      setError('Thread title cannot be empty.')
+      return
+    }
+
+    setBusy(true)
+    setError('')
+    const { error: renameError } = await supabase.from('cockpit_threads').update({ title: nextTitle }).eq('id', threadId)
+    if (renameError) {
+      setError(renameError.message)
+      setBusy(false)
+      return
+    }
+
+    setThreads((prev) => prev.map((thread) => (thread.id === threadId ? { ...thread, title: nextTitle } : thread)))
+    setRenamingThreadId(null)
+    setRenameTitle('')
+    setBusy(false)
+  }
+
+  const archiveThread = async (threadId: number) => {
+    setBusy(true)
+    setError('')
+
+    const now = new Date()
+    const deleteAfter = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000)
+    const { error: archiveError } = await supabase
+      .from('cockpit_threads')
+      .update({
+        archived_at: now.toISOString(),
+        delete_after: deleteAfter.toISOString()
+      })
+      .eq('id', threadId)
+
+    if (archiveError) {
+      setError(archiveError.message)
+      setBusy(false)
+      return
+    }
+
+    if (activeThreadId === threadId && !showArchived) {
+      setActiveThreadId(null)
+      setMessages([])
+      setAttachments([])
+    }
+
+    await fetchThreads()
+    setBusy(false)
+  }
+
+  const fetchMembersForThread = async (threadId: number) => {
+    const { data: memberRows, error: membersError } = await supabase
+      .from('cockpit_thread_members')
+      .select('id, thread_id, user_id, role, created_at')
+      .eq('thread_id', threadId)
+      .order('created_at', { ascending: true })
+
+    if (membersError) {
+      setError(membersError.message)
+      return
+    }
+
+    const rows = (memberRows || []) as ThreadMember[]
+    const memberUserIds = Array.from(new Set(rows.map((row) => row.user_id)))
+    let profilesByUser: Record<string, { email: string | null }> = {}
+
+    if (memberUserIds.length > 0) {
+      const { data: profileRows, error: profilesError } = await supabase
+        .from('profiles')
+        .select('id, email')
+        .in('id', memberUserIds)
+
+      if (profilesError) {
+        setError(profilesError.message)
+      } else {
+        profilesByUser = Object.fromEntries((profileRows || []).map((row: any) => [row.id, { email: row.email || null }]))
+      }
+    }
+
+    setThreadMembers(rows.map((row) => ({ ...row, email: profilesByUser[row.user_id]?.email || null })))
+  }
+
+  const fetchApprovedUsers = async () => {
+    const { data, error: usersError } = await supabase
+      .from('profiles')
+      .select('id, email, status')
+      .eq('status', 'active')
+      .order('email', { ascending: true })
+
+    if (usersError) {
+      setError(usersError.message)
+      return
+    }
+
+    const rows = (data || []) as Array<{ id: string; email: string | null; status: string }>
+    setApprovedUsers(rows.map((row) => ({ id: row.id, email: row.email })))
+  }
+
+  const openMembersPanel = async (thread: Thread) => {
+    setMembersThread(thread)
+    setMembersBusy(true)
+    setError('')
+    await Promise.all([fetchMembersForThread(thread.id), fetchApprovedUsers()])
+    setMembersBusy(false)
+  }
+
+  const addMember = async () => {
+    if (!membersThread || !newMemberUserId) return
+    setMembersBusy(true)
+    setError('')
+
+    const { error: memberError } = await supabase.from('cockpit_thread_members').insert({
+      thread_id: membersThread.id,
+      user_id: newMemberUserId,
+      role: 'member'
+    })
+
+    if (memberError) {
+      setError(memberError.message)
+      setMembersBusy(false)
+      return
+    }
+
+    await Promise.all([fetchMembersForThread(membersThread.id), fetchThreads()])
+    setNewMemberUserId('')
+    setMembersBusy(false)
+  }
+
+  const removeMember = async (memberId: number) => {
+    if (!membersThread) return
+    setMembersBusy(true)
+    setError('')
+
+    const { error: memberError } = await supabase.from('cockpit_thread_members').delete().eq('id', memberId)
+    if (memberError) {
+      setError(memberError.message)
+      setMembersBusy(false)
+      return
+    }
+
+    await Promise.all([fetchMembersForThread(membersThread.id), fetchThreads()])
+    setMembersBusy(false)
   }
 
   const toggleSelectAttachment = (id: number) => {
@@ -465,6 +676,28 @@ export default function CodingCockpitPage() {
   }
 
   const activeThread = useMemo(() => threads.find((t) => t.id === activeThreadId) || null, [threads, activeThreadId])
+  const activeThreadRole = activeThreadId ? threadRoles[activeThreadId] || 'member' : 'member'
+  const canManageMembersThread = membersThread ? Boolean(threadRoles[membersThread.id]) : false
+  const membersThreadOwnerCount = useMemo(
+    () => threadMembers.reduce((count, member) => (member.role === 'owner' ? count + 1 : count), 0),
+    [threadMembers]
+  )
+
+  const availableApprovedUsers = useMemo(() => {
+    const memberIds = new Set(threadMembers.map((member) => member.user_id))
+    return approvedUsers.filter((user) => !memberIds.has(user.id))
+  }, [approvedUsers, threadMembers])
+
+  useEffect(() => {
+    if (availableApprovedUsers.length === 0) {
+      setNewMemberUserId('')
+      return
+    }
+
+    if (!availableApprovedUsers.some((user) => user.id === newMemberUserId)) {
+      setNewMemberUserId(availableApprovedUsers[0].id)
+    }
+  }, [availableApprovedUsers, newMemberUserId])
 
   if (loading) {
     return (
@@ -522,29 +755,96 @@ export default function CodingCockpitPage() {
           <button onClick={() => void createThread()} style={withDisabled(ui.buttonPrimary, busy)} disabled={busy}>
             + New thread
           </button>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', color: 'var(--muted)', fontSize: '0.8rem' }}>
+            <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />
+            Show archived
+          </label>
           <div style={{ ...ui.panel, padding: '0.5rem', overflow: 'auto', flex: 1 }}>
             {threads.length === 0 ? (
               <div style={{ color: 'var(--muted)', fontSize: '0.9rem' }}>No threads yet.</div>
             ) : (
               threads.filter(Boolean).map((t) => (
-                <button
-                  key={(t as any).id}
-                  onClick={() => void handleSelectThread(t.id)}
+                <div
+                  key={t.id}
                   style={{
-                    width: '100%',
-                    textAlign: 'left',
-                    padding: '0.6rem',
+                    padding: '0.55rem',
                     marginBottom: '0.35rem',
                     borderRadius: 10,
                     border: '1px solid var(--border)',
-                    background: t.id === activeThreadId ? 'var(--surface-2)' : 'transparent',
-                    color: 'var(--text)',
-                    cursor: 'pointer'
+                    background: t.id === activeThreadId ? 'var(--surface-2)' : 'transparent'
                   }}
                 >
-                  <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{(t as any).title || `Thread ${(t as any).id}`}</div>
-                  <div style={{ color: 'var(--muted)', fontSize: '0.75rem' }}>{new Date((t as any).updated_at).toLocaleString()}</div>
-                </button>
+                  <button
+                    onClick={() => void handleSelectThread(t.id)}
+                    style={{
+                      width: '100%',
+                      textAlign: 'left',
+                      border: 'none',
+                      background: 'transparent',
+                      color: 'var(--text)',
+                      padding: 0,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem', alignItems: 'center' }}>
+                      <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{t.title || `Thread ${t.id}`}</div>
+                      <span style={{ color: 'var(--muted)', fontSize: '0.7rem', textTransform: 'uppercase' }}>{threadRoles[t.id] || 'member'}</span>
+                    </div>
+                    <div style={{ color: 'var(--muted)', fontSize: '0.75rem' }}>{new Date(t.updated_at).toLocaleString()}</div>
+                    {t.archived_at && <div style={{ color: '#fbbf24', fontSize: '0.73rem' }}>Archived</div>}
+                  </button>
+
+                  <div style={{ display: 'flex', gap: '0.35rem', marginTop: '0.45rem', flexWrap: 'wrap' }}>
+                    {renamingThreadId === t.id ? (
+                      <>
+                        <input
+                          value={renameTitle}
+                          onChange={(e) => setRenameTitle(e.target.value)}
+                          style={{ ...ui.input, flex: 1, minWidth: 120, padding: '0.35rem 0.45rem', fontSize: '0.78rem' }}
+                        />
+                        <button
+                          onClick={() => void saveRenameThread(t.id)}
+                          disabled={busy}
+                          style={withDisabled({ ...ui.buttonPrimary, padding: '0.3rem 0.5rem', fontSize: '0.75rem' }, busy)}
+                        >
+                          Save
+                        </button>
+                        <button
+                          onClick={() => {
+                            setRenamingThreadId(null)
+                            setRenameTitle('')
+                          }}
+                          style={{ ...ui.buttonSecondary, padding: '0.3rem 0.5rem', fontSize: '0.75rem' }}
+                        >
+                          Cancel
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => startRenameThread(t)}
+                          disabled={busy || threadRoles[t.id] !== 'owner'}
+                          style={withDisabled({ ...ui.buttonSecondary, padding: '0.3rem 0.5rem', fontSize: '0.75rem' }, busy || threadRoles[t.id] !== 'owner')}
+                        >
+                          Rename
+                        </button>
+                        <button
+                          onClick={() => void archiveThread(t.id)}
+                          disabled={busy || Boolean(t.archived_at) || threadRoles[t.id] !== 'owner'}
+                          style={withDisabled({ ...ui.buttonSecondary, padding: '0.3rem 0.5rem', fontSize: '0.75rem' }, busy || Boolean(t.archived_at) || threadRoles[t.id] !== 'owner')}
+                        >
+                          Archive
+                        </button>
+                        <button
+                          onClick={() => void openMembersPanel(t)}
+                          style={{ ...ui.buttonSecondary, padding: '0.3rem 0.5rem', fontSize: '0.75rem' }}
+                        >
+                          Members
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
               ))
             )}
           </div>
@@ -556,6 +856,14 @@ export default function CodingCockpitPage() {
             <div>
               <div style={{ fontWeight: 800 }}>{activeThread?.title || 'Select a thread'}</div>
               <div style={{ color: 'var(--muted)', fontSize: '0.8rem' }}>Attach files, highlight issues, and message your bot.</div>
+              {activeThread && (
+                <div style={{ color: 'var(--muted)', fontSize: '0.76rem', marginTop: '0.25rem' }}>
+                  Role: {activeThreadRole}
+                  {activeThread.archived_at && activeThread.delete_after
+                    ? ` • Archived (auto-delete ${new Date(activeThread.delete_after).toLocaleString()})`
+                    : ''}
+                </div>
+              )}
             </div>
           </div>
 
@@ -729,6 +1037,110 @@ export default function CodingCockpitPage() {
           </div>
         </div>
       </div>
+
+      {membersThread && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.55)',
+            display: 'grid',
+            placeItems: 'center',
+            zIndex: 2500,
+            padding: '1rem'
+          }}
+          onClick={() => setMembersThread(null)}
+        >
+          <div
+            style={{
+              width: 'min(620px, 96vw)',
+              background: 'var(--surface)',
+              border: '1px solid var(--border)',
+              borderRadius: 12,
+              padding: '0.9rem'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'center' }}>
+              <div>
+                <div style={{ fontWeight: 800 }}>Members</div>
+                <div style={{ color: 'var(--muted)', fontSize: '0.82rem' }}>{membersThread.title || `Thread ${membersThread.id}`}</div>
+              </div>
+              <button onClick={() => setMembersThread(null)} style={ui.buttonSecondary}>
+                Close
+              </button>
+            </div>
+
+            <div style={{ marginTop: '0.75rem', display: 'grid', gap: '0.55rem' }}>
+              {threadMembers.length === 0 ? (
+                <div style={{ color: 'var(--muted)', fontSize: '0.86rem' }}>No members found.</div>
+              ) : (
+                threadMembers.map((member) => (
+                  <div key={member.id} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '0.55rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'center' }}>
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: '0.88rem' }}>{member.email || member.user_id}</div>
+                        <div style={{ color: 'var(--muted)', fontSize: '0.75rem' }}>{member.role}</div>
+                      </div>
+                      {canManageMembersThread && (
+                        <button
+                          onClick={() => void removeMember(member.id)}
+                          disabled={membersBusy || (member.role === 'owner' && membersThreadOwnerCount <= 1)}
+                          style={withDisabled(
+                            { ...ui.buttonDanger, padding: '0.32rem 0.52rem', fontSize: '0.75rem' },
+                            membersBusy || (member.role === 'owner' && membersThreadOwnerCount <= 1)
+                          )}
+                        >
+                          {member.role === 'owner' && membersThreadOwnerCount <= 1 ? 'Last owner' : 'Remove'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div style={{ marginTop: '0.8rem', borderTop: '1px solid var(--border)', paddingTop: '0.8rem' }}>
+              <div style={{ fontWeight: 700, fontSize: '0.86rem', marginBottom: '0.45rem' }}>Add approved user</div>
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <select
+                  value={newMemberUserId}
+                  onChange={(e) => setNewMemberUserId(e.target.value)}
+                  style={{ ...ui.input, minWidth: 260, flex: 1 }}
+                  disabled={!canManageMembersThread || membersBusy || availableApprovedUsers.length === 0}
+                >
+                  {availableApprovedUsers.length === 0 ? (
+                    <option value="">No approved users available</option>
+                  ) : (
+                    availableApprovedUsers.map((user) => (
+                      <option key={user.id} value={user.id}>
+                        {user.email || user.id}
+                      </option>
+                    ))
+                  )}
+                </select>
+                <button
+                  onClick={() => void addMember()}
+                  disabled={!canManageMembersThread || membersBusy || !newMemberUserId}
+                  style={withDisabled(ui.buttonPrimary, !canManageMembersThread || membersBusy || !newMemberUserId)}
+                >
+                  {membersBusy ? 'Saving…' : 'Add member'}
+                </button>
+              </div>
+              {!canManageMembersThread && (
+                <div style={{ color: 'var(--muted)', fontSize: '0.78rem', marginTop: '0.4rem' }}>
+                  Only thread members can manage members.
+                </div>
+              )}
+              {canManageMembersThread && (
+                <div style={{ color: 'var(--muted)', fontSize: '0.78rem', marginTop: '0.4rem' }}>
+                  Any member can invite or remove members. The last owner cannot be removed.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Annotation modal (MVP: rectangles only) */}
       {annotationAttachment && (
