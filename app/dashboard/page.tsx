@@ -65,7 +65,11 @@ export default function Dashboard() {
   const [isAdmin, setIsAdmin] = useState(false)
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
-  const [topTab, setTopTab] = useState<TopTab>('progress')
+  const [topTab, setTopTab] = useState<TopTab>(() => {
+    if (typeof window === 'undefined') return 'progress'
+    const stored = window.localStorage.getItem('azul-dashboard-tab')
+    return stored === 'dev' ? 'dev' : 'progress'
+  })
 
   const [milestones, setMilestones] = useState<Milestone[]>([])
   const [selectedMilestone, setSelectedMilestone] = useState<number | null>(null)
@@ -351,8 +355,24 @@ export default function Dashboard() {
 
       <main style={{ flex: 1, padding: '1.25rem' }}>
         <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
-          <button onClick={() => setTopTab('progress')} style={topTab === 'progress' ? tabActive : tabIdle}>Progress</button>
-          <button onClick={() => setTopTab('dev')} style={topTab === 'dev' ? tabActive : tabIdle}>Dev/Coder</button>
+          <button
+            onClick={() => {
+              window.localStorage.setItem('azul-dashboard-tab', 'progress')
+              setTopTab('progress')
+            }}
+            style={topTab === 'progress' ? tabActive : tabIdle}
+          >
+            Progress
+          </button>
+          <button
+            onClick={() => {
+              window.localStorage.setItem('azul-dashboard-tab', 'dev')
+              setTopTab('dev')
+            }}
+            style={topTab === 'dev' ? tabActive : tabIdle}
+          >
+            Dev/Coder
+          </button>
           <button onClick={() => router.push('/dashboard/content')} style={tabIdle}>Calendar</button>
         </div>
 
