@@ -973,10 +973,10 @@ export default function ContentCalendar() {
                             const v = e.target.value as 'short' | 'medium' | 'long' | 'thread'
                             const defaults =
                               v === 'long'
-                                ? { gen_min_words: 120, gen_max_words: 220 }
+                                ? { gen_min_words: 600, gen_max_words: 1000 }
                                 : v === 'medium'
-                                  ? { gen_min_words: 45, gen_max_words: 110 }
-                                  : { gen_min_words: null, gen_max_words: null }
+                                  ? { gen_min_words: 150, gen_max_words: 400 }
+                                  : { gen_min_words: 20, gen_max_words: 100 }
                             setEditPipeline((p) => ({ ...p, gen_length: v, ...defaults }))
                           }}
                           style={{ ...ui.input, padding: '0.45rem 0.5rem' }}
@@ -1025,8 +1025,8 @@ export default function ContentCalendar() {
                         </>
                       ) : (
                         <div style={{ gridColumn: '1 / -1', color: 'var(--muted)', fontSize: '0.85rem' }}>
-                          {((editPipeline as any).gen_length === 'short') && 'Short = 1–2 sentences.'}
-                          {((editPipeline as any).gen_length === 'medium') && 'Medium = ~45–110 words.'}
+                          {((editPipeline as any).gen_length === 'short') && 'Short = 20–100 words.'}
+                          {((editPipeline as any).gen_length === 'medium') && 'Medium = 150–400 words.'}
                         </div>
                       )}
 

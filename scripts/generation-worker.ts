@@ -84,10 +84,10 @@ const buildPrompt = (slot: Slot, platform: string, recentExamples: string[], ext
 
   const lengthRule =
     rules.length === 'long'
-      ? `- Length: long single post. Target ${rules.minWords || 120}-${rules.maxWords || 220} words.`
+      ? `- Length: long single post. Target ${rules.minWords || 600}-${rules.maxWords || 1000} words.`
       : rules.length === 'medium'
-        ? '- Length: medium. Target 45-110 words.'
-        : '- Length: short. 1-2 sentences.'
+        ? `- Length: medium. Target ${rules.minWords || 150}-${rules.maxWords || 400} words.`
+        : `- Length: short. Target ${rules.minWords || 20}-${rules.maxWords || 100} words.`
 
   const mustStartRule = rules.mustStart ? `- Must start with: ${JSON.stringify(rules.mustStart)}.` : ''
   const endQRule = rules.mustEndQ ? '- Must end with a question mark.' : ''
@@ -135,10 +135,10 @@ const buildBatchPrompt = (slots: Slot[], platform: string, recentExamples: strin
 
   const lengthRule =
     rules.length === 'long'
-      ? `- Length: long single post. Target ${rules.minWords || 120}-${rules.maxWords || 220} words.`
+      ? `- Length: long single post. Target ${rules.minWords || 600}-${rules.maxWords || 1000} words.`
       : rules.length === 'medium'
-        ? '- Length: medium. Target 45-110 words.'
-        : '- Length: short. 1-2 sentences.'
+        ? `- Length: medium. Target ${rules.minWords || 150}-${rules.maxWords || 400} words.`
+        : `- Length: short. Target ${rules.minWords || 20}-${rules.maxWords || 100} words.`
 
   const mustStartRule = rules.mustStart ? `- Must start with: ${JSON.stringify(rules.mustStart)}.` : ''
   const endQRule = rules.mustEndQ ? '- Must end with a question mark.' : ''
