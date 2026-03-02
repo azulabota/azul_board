@@ -10,6 +10,7 @@ type ContentItem = {
   id: number
   user_id: string
   date: string
+  scheduled_at: string | null
   title: string
   type: string
   pipeline_key: string | null
@@ -32,6 +33,10 @@ type Pipeline = {
   color: string
   days_of_week: number[]
   is_enabled: boolean
+  timezone?: string | null
+  post_time?: string | null
+  post_time_start?: string | null
+  post_time_end?: string | null
 }
 
 const DEFAULT_PIPELINES: Array<Pick<Pipeline, 'key' | 'name' | 'description' | 'color' | 'days_of_week'>> = [
@@ -86,7 +91,8 @@ export default function ContentCalendar() {
     name: '',
     description: '',
     color: '#64748b',
-    days: [1, 2, 3, 4, 5]
+    days: [1, 2, 3, 4, 5],
+    post_time: '09:00'
   })
 
   const [editingPipelineId, setEditingPipelineId] = useState<number | null>(null)
@@ -96,7 +102,8 @@ export default function ContentCalendar() {
     name: '',
     description: '',
     color: '#64748b',
-    days: [0, 1, 2, 3, 4, 5, 6]
+    days: [0, 1, 2, 3, 4, 5, 6],
+    post_time: '09:00'
   })
   const [pendingDeletePipeline, setPendingDeletePipeline] = useState<Pipeline | null>(null)
   const [deleteMode, setDeleteMode] = useState<'reassign' | 'none'>('reassign')
@@ -107,7 +114,7 @@ export default function ContentCalendar() {
     return pipelines.map((p) => ({ value: p.key, label: p.name, disabled: !p.is_enabled }))
   }, [pipelines])
 
-  const [newItem, setNewItem] = useState({ title: '', pipeline_key: 'short_form', content: '', platform: 'X' })
+  const [newItem, setNewItem] = useState({ title: '', pipeline_key: 'short_form', content: '', platform: 'X', time: '' })
 
   useEffect(() => {
     void initialize()
@@ -163,7 +170,7 @@ export default function ContentCalendar() {
   const loadItems = async (uid: string) => {
     const { data, error: fetchError } = await supabase
       .from('content_items')
-      .select('id, user_id, date, title, type, pipeline_key, content, status, platform')
+      .select('id, user_id, date, scheduled_at, title, type, pipeline_key, content, status, platform')
       .eq('user_id', uid)
       .order('date', { ascending: true })
 
@@ -180,7 +187,7 @@ export default function ContentCalendar() {
 
     const { data, error: fetchError } = await supabase
       .from('content_pipelines')
-      .select('id, user_id, key, name, description, color, days_of_week, is_enabled')
+      .select('id, user_id, key, name, description, color, days_of_week, is_enabled, timezone, post_time, post_time_start, post_time_end')
       .eq('user_id', uid)
       .order('created_at', { ascending: true })
 
@@ -200,7 +207,9 @@ export default function ContentCalendar() {
         description: p.description,
         color: p.color,
         days_of_week: p.days_of_week,
-        is_enabled: true
+        is_enabled: true,
+        timezone: 'America/Denver',
+        post_time: '09:00'
       }))
 
       const { error: seedError } = await supabase.from('content_pipelines').insert(payload)
@@ -211,7 +220,7 @@ export default function ContentCalendar() {
 
       const { data: seeded } = await supabase
         .from('content_pipelines')
-        .select('id, user_id, key, name, description, color, days_of_week, is_enabled')
+        .select('id, user_id, key, name, description, color, days_of_week, is_enabled, timezone, post_time, post_time_start, post_time_end')
         .eq('user_id', uid)
         .order('created_at', { ascending: true })
 
@@ -256,11 +265,16 @@ export default function ContentCalendar() {
 
     const pipelineKey = newItem.pipeline_key
 
+    const pipeline = pipelineByKey.get(pipelineKey)
+    const chosenTime = (newItem.time || '').trim() || (pipeline?.post_time as string | undefined) || ''
+    const scheduledAt = chosenTime ? `${selectedDate}T${chosenTime}:00` : null
+
     const { data, error: insertError } = await supabase
       .from('content_items')
       .insert({
         user_id: userId,
         date: selectedDate,
+        scheduled_at: scheduledAt,
         title: newItem.title.trim(),
         type: pipelineKey, // backward compat
         pipeline_key: pipelineKey,
@@ -268,7 +282,7 @@ export default function ContentCalendar() {
         status: 'scheduled',
         platform: newItem.platform
       })
-      .select('id, user_id, date, title, type, pipeline_key, content, status, platform')
+      .select('id, user_id, date, scheduled_at, title, type, pipeline_key, content, status, platform')
       .single()
 
     if (insertError) {
@@ -278,7 +292,7 @@ export default function ContentCalendar() {
     }
 
     setContentItems((prev) => [...prev, data as ContentItem])
-    setNewItem((prev) => ({ ...prev, title: '', content: '' }))
+    setNewItem((prev) => ({ ...prev, title: '', content: '', time: '' }))
     setSaving(false)
   }
 
@@ -313,7 +327,9 @@ export default function ContentCalendar() {
       name,
       description: newPipeline.description.trim() || null,
       color: newPipeline.color,
-      days_of_week: newPipeline.days
+      days_of_week: newPipeline.days,
+      timezone: 'America/Denver',
+      post_time: newPipeline.post_time || null
     })
 
     if (insertError) {
@@ -323,7 +339,7 @@ export default function ContentCalendar() {
     }
 
     await loadPipelinesAndMaybeSeed(userId)
-    setNewPipeline({ key: '', name: '', description: '', color: '#64748b', days: [1, 2, 3, 4, 5] })
+    setNewPipeline({ key: '', name: '', description: '', color: '#64748b', days: [1, 2, 3, 4, 5], post_time: '09:00' })
     setPipelineBusy(false)
   }
 
@@ -334,7 +350,8 @@ export default function ContentCalendar() {
       name: p.name,
       description: p.description || '',
       color: p.color,
-      days: p.days_of_week || [0, 1, 2, 3, 4, 5, 6]
+      days: p.days_of_week || [0, 1, 2, 3, 4, 5, 6],
+      post_time: (p.post_time as string | undefined) || '09:00'
     })
 
     // Bring the edit panel into view (it renders below the list)
@@ -362,7 +379,8 @@ export default function ContentCalendar() {
         name,
         description: editPipeline.description.trim() || null,
         color: editPipeline.color,
-        days_of_week: editPipeline.days
+        days_of_week: editPipeline.days,
+        post_time: (editPipeline as any).post_time || null
       })
       .eq('id', editingPipelineId)
       .eq('user_id', userId)
@@ -592,17 +610,31 @@ export default function ContentCalendar() {
                 <input type="color" value={newPipeline.color} onChange={(e) => setNewPipeline((p) => ({ ...p, color: e.target.value }))} />
                 <span style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>Color</span>
               </div>
-              <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
-                {DOW.map((d) => (
-                  <label key={d.i} style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.85rem', color: 'var(--text)' }}>
-                    <input
-                      type="checkbox"
-                      checked={newPipeline.days.includes(d.i)}
-                      onChange={() => setNewPipeline((p) => ({ ...p, days: toggleDay(p.days, d.i) }))}
-                    />
-                    {d.label}
-                  </label>
-                ))}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                <div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--muted)', marginBottom: '0.25rem' }}>Post time (local)</div>
+                  <input
+                    type="time"
+                    value={newPipeline.post_time}
+                    onChange={(e) => setNewPipeline((p) => ({ ...p, post_time: e.target.value }))}
+                    style={ui.input}
+                  />
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--muted)', marginBottom: '0.25rem' }}>Days of week</div>
+                  <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                    {DOW.map((d) => (
+                      <label key={d.i} style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.85rem', color: 'var(--text)' }}>
+                        <input
+                          type="checkbox"
+                          checked={newPipeline.days.includes(d.i)}
+                          onChange={() => setNewPipeline((p) => ({ ...p, days: toggleDay(p.days, d.i) }))}
+                        />
+                        {d.label}
+                      </label>
+                    ))}
+                  </div>
+                </div>
               </div>
               <button
                 onClick={() => void createPipeline()}
@@ -766,19 +798,33 @@ export default function ContentCalendar() {
                   </div>
                 </div>
                 <div>
-                  <div style={{ color: 'var(--muted)', fontSize: '0.8rem', marginBottom: '0.25rem' }}>Days of week</div>
-                  <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
-                    {DOW.map((d) => (
-                      <label key={d.i} style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.85rem', color: 'var(--text)' }}>
-                        <input
-                          type="checkbox"
-                          checked={editPipeline.days.includes(d.i)}
-                          onChange={() => setEditPipeline((p) => ({ ...p, days: toggleDay(p.days, d.i) }))}
-                        />
-                        {d.label}
-                      </label>
-                    ))}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                    <div>
+                      <div style={{ color: 'var(--muted)', fontSize: '0.8rem', marginBottom: '0.25rem' }}>Post time (local)</div>
+                      <input
+                        type="time"
+                        value={(editPipeline as any).post_time}
+                        onChange={(e) => setEditPipeline((p) => ({ ...p, post_time: e.target.value }))}
+                        style={ui.input}
+                      />
+                    </div>
+                    <div>
+                      <div style={{ color: 'var(--muted)', fontSize: '0.8rem', marginBottom: '0.25rem' }}>Days of week</div>
+                      <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+                        {DOW.map((d) => (
+                          <label key={d.i} style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.85rem', color: 'var(--text)' }}>
+                            <input
+                              type="checkbox"
+                              checked={editPipeline.days.includes(d.i)}
+                              onChange={() => setEditPipeline((p) => ({ ...p, days: toggleDay(p.days, d.i) }))}
+                            />
+                            {d.label}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
                   </div>
+
                   <button
                     onClick={() => void saveEditPipeline()}
                     disabled={pipelineBusy}
@@ -892,7 +938,15 @@ export default function ContentCalendar() {
             <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
               <select
                 value={newItem.pipeline_key}
-                onChange={(e) => setNewItem({ ...newItem, pipeline_key: e.target.value })}
+                onChange={(e) => {
+                  const key = e.target.value
+                  const p = pipelineByKey.get(key)
+                  setNewItem({
+                    ...newItem,
+                    pipeline_key: key,
+                    time: (p?.post_time as string | undefined) || ''
+                  })
+                }}
                 style={{ ...ui.input, flex: 1 }}
               >
                 {pipelineKeyOptions.map((opt) => (
@@ -901,6 +955,12 @@ export default function ContentCalendar() {
                   </option>
                 ))}
               </select>
+              <input
+                type="time"
+                value={newItem.time}
+                onChange={(e) => setNewItem({ ...newItem, time: e.target.value })}
+                style={{ ...ui.input, flex: 1 }}
+              />
               <select
                 value={newItem.platform}
                 onChange={(e) => setNewItem({ ...newItem, platform: e.target.value })}
