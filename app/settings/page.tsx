@@ -215,6 +215,41 @@ export default function SettingsPage() {
     setKeysBusy(false)
   }
 
+  const deleteKey = async (id: number) => {
+    const token = await getToken()
+    if (!token) {
+      setError('Session expired. Please sign in again.')
+      return
+    }
+
+    const ok = confirm('Delete this API key? This cannot be undone. (Tip: revoke first.)')
+    if (!ok) return
+
+    setKeysBusy(true)
+    setError('')
+    setMessage('')
+
+    const res = await fetch('/api/keys/delete', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({ id })
+    })
+
+    const data = await res.json().catch(() => null)
+    if (!res.ok) {
+      setError(data?.error || 'Failed to delete API key')
+      setKeysBusy(false)
+      return
+    }
+
+    setMessage('API key deleted')
+    await fetchKeys()
+    setKeysBusy(false)
+  }
+
   const botEndpoints = useMemo(() => {
     if (typeof window === 'undefined') return []
     const base = window.location.origin
@@ -330,7 +365,7 @@ export default function SettingsPage() {
                   <th style={{ borderBottom: '1px solid #333', padding: '0.5rem' }}>Created</th>
                   <th style={{ borderBottom: '1px solid #333', padding: '0.5rem' }}>Last used</th>
                   <th style={{ borderBottom: '1px solid #333', padding: '0.5rem' }}>Revoked</th>
-                  <th style={{ borderBottom: '1px solid #333', padding: '0.5rem' }}>Action</th>
+                  <th style={{ borderBottom: '1px solid #333', padding: '0.5rem' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -346,13 +381,22 @@ export default function SettingsPage() {
                     <td style={{ borderBottom: '1px solid #222', padding: '0.5rem' }}>{fmt(row.last_used_at)}</td>
                     <td style={{ borderBottom: '1px solid #222', padding: '0.5rem' }}>{row.revoked_at ? fmt(row.revoked_at) : 'Active'}</td>
                     <td style={{ borderBottom: '1px solid #222', padding: '0.5rem' }}>
-                      <button
-                        disabled={Boolean(row.revoked_at) || keysBusy}
-                        onClick={() => revokeKey(row.id)}
-                        style={{ padding: '6px 10px', border: 'none', borderRadius: '6px', background: row.revoked_at ? '#222' : '#dc2626', color: '#fff', cursor: row.revoked_at ? 'default' : 'pointer', opacity: keysBusy ? 0.6 : 1 }}
-                      >
-                        Revoke
-                      </button>
+                      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <button
+                          disabled={Boolean(row.revoked_at) || keysBusy}
+                          onClick={() => revokeKey(row.id)}
+                          style={{ padding: '6px 10px', border: 'none', borderRadius: '6px', background: row.revoked_at ? '#222' : '#dc2626', color: '#fff', cursor: row.revoked_at ? 'default' : 'pointer', opacity: keysBusy ? 0.6 : 1 }}
+                        >
+                          Revoke
+                        </button>
+                        <button
+                          disabled={keysBusy}
+                          onClick={() => deleteKey(row.id)}
+                          style={{ padding: '6px 10px', border: 'none', borderRadius: '6px', background: '#333', color: '#fff', cursor: 'pointer', opacity: keysBusy ? 0.6 : 1 }}
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
