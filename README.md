@@ -61,6 +61,22 @@ update public.user_permissions set can_use_dev_dashboard = true, can_use_schedul
 
 After that, log in and visit `/admin`.
 
+### Coding Cockpit
+
+#### Supabase setup
+- Run migration: `supabase/migrations/006_coding_cockpit.sql`
+- Create a **private** Supabase Storage bucket named: `cockpit`
+  - Uploads are stored under `<userId>/<threadId>/...`
+
+#### Vercel env vars
+- `DASHBOARD_ENCRYPTION_KEY` (required for storing bot tokens / provider keys encrypted-at-rest)
+  - Format: either **64 hex chars** (32 bytes) or **base64 of 32 bytes**
+  - Example (generate 64-hex): `openssl rand -hex 32`
+
+#### Upload retention
+- Attachments are marked with `expires_at = now + 30 days`.
+- (Cleanup automation can be added later; for now it’s metadata + manual cleanup.)
+
 ### 5. Notes for admin flow
 
 - New signups are created with `profiles.status = 'pending'`.
