@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../lib/supabase'
+import { ui, withDisabled } from '../ui/styles'
 
 type AdminUser = {
   id: string
@@ -100,40 +101,40 @@ export default function AdminPage() {
   }
 
   if (loading) {
-    return <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: '#000', color: '#fff' }}>Loading admin panel...</div>
+    return <div style={{ ...ui.page, display: 'grid', placeItems: 'center' }}>Loading admin panel...</div>
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: '#000', color: '#fff', padding: '1.5rem' }}>
+    <div style={{ ...ui.page, padding: '1.5rem' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
         <h1 style={{ margin: 0 }}>Admin Panel</h1>
-        <button onClick={() => router.push('/dashboard')} style={{ padding: '8px 12px', border: 'none', borderRadius: '6px', background: '#333', color: '#fff', cursor: 'pointer' }}>Back to Dashboard</button>
+        <button onClick={() => router.push('/dashboard')} style={ui.buttonSecondary}>Back to Dashboard</button>
       </div>
 
-      {error && <div style={{ marginBottom: '1rem', background: '#7f1d1d', border: '1px solid #dc2626', borderRadius: '8px', padding: '0.75rem' }}>{error}</div>}
+      {error && <div style={{ marginBottom: '1rem', background: '#4f1d28', border: '1px solid var(--danger-border)', borderRadius: '8px', padding: '0.75rem' }}>{error}</div>}
 
-      <section style={{ marginBottom: '1.5rem', background: '#111', border: '1px solid #333', borderRadius: '10px', padding: '1rem' }}>
+      <section style={{ ...ui.panel, marginBottom: '1.5rem', padding: '1rem' }}>
         <h2 style={{ marginTop: 0 }}>Pending users</h2>
         {pendingUsers.length === 0 ? (
-          <p style={{ color: '#aaa' }}>No pending users.</p>
+          <p style={{ color: 'var(--muted)' }}>No pending users.</p>
         ) : (
           pendingUsers.map((user) => (
-            <div key={user.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: '0.5rem', alignItems: 'center', padding: '0.5rem 0', borderBottom: '1px solid #222' }}>
+            <div key={user.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: '0.5rem', alignItems: 'center', padding: '0.5rem 0', borderBottom: '1px solid var(--border)' }}>
               <div>
                 <div style={{ fontWeight: 600 }}>{user.first_name || 'Unnamed user'}</div>
-                <div style={{ fontSize: '0.9rem', color: '#999' }}>{user.email || 'No email'}</div>
+                <div style={{ fontSize: '0.9rem', color: 'var(--muted)' }}>{user.email || 'No email'}</div>
               </div>
               <button
                 disabled={working === `approve-${user.id}`}
                 onClick={() => mutate('/api/admin/approve', { userId: user.id, status: 'active' }, `approve-${user.id}`)}
-                style={{ padding: '8px 12px', border: 'none', borderRadius: '6px', background: '#16a34a', color: '#fff', cursor: 'pointer' }}
+                style={withDisabled(ui.buttonSuccess, working === `approve-${user.id}`)}
               >
                 Approve
               </button>
               <button
                 disabled={working === `disable-pending-${user.id}`}
                 onClick={() => mutate('/api/admin/approve', { userId: user.id, status: 'disabled' }, `disable-pending-${user.id}`)}
-                style={{ padding: '8px 12px', border: 'none', borderRadius: '6px', background: '#dc2626', color: '#fff', cursor: 'pointer' }}
+                style={withDisabled(ui.buttonDanger, working === `disable-pending-${user.id}`)}
               >
                 Disable
               </button>
@@ -142,20 +143,20 @@ export default function AdminPage() {
         )}
       </section>
 
-      <section style={{ marginBottom: '1.5rem', background: '#111', border: '1px solid #333', borderRadius: '10px', padding: '1rem' }}>
+      <section style={{ ...ui.panel, marginBottom: '1.5rem', padding: '1rem' }}>
         <h2 style={{ marginTop: 0 }}>Users and permissions</h2>
         <div style={{ display: 'grid', gap: '0.5rem' }}>
           {users.map((user) => (
-            <div key={`perm-${user.id}`} style={{ background: '#0a0a0a', border: '1px solid #222', borderRadius: '8px', padding: '0.75rem' }}>
+            <div key={`perm-${user.id}`} style={{ ...ui.panelAlt, padding: '0.75rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'center', marginBottom: '0.5rem' }}>
                 <div>
                   <div style={{ fontWeight: 600 }}>{user.first_name || 'Unnamed user'}</div>
-                  <div style={{ fontSize: '0.9rem', color: '#999' }}>{user.email || 'No email'}</div>
+                  <div style={{ fontSize: '0.9rem', color: 'var(--muted)' }}>{user.email || 'No email'}</div>
                 </div>
                 <select
                   value={user.status}
                   onChange={(e) => mutate('/api/admin/approve', { userId: user.id, status: e.target.value }, `status-${user.id}`)}
-                  style={{ padding: '6px 8px', background: '#111', border: '1px solid #333', color: '#fff', borderRadius: '6px' }}
+                  style={{ ...ui.input, width: 140 }}
                 >
                   <option value="pending">pending</option>
                   <option value="active">active</option>
@@ -183,21 +184,21 @@ export default function AdminPage() {
         </div>
       </section>
 
-      <section style={{ background: '#111', border: '1px solid #333', borderRadius: '10px', padding: '1rem' }}>
+      <section style={{ ...ui.panel, padding: '1rem' }}>
         <h2 style={{ marginTop: 0 }}>Admin role management</h2>
         {users.map((user) => {
           const isAdmin = user.roles.includes('admin')
           return (
-            <div key={`role-${user.id}`} style={{ display: 'grid', gridTemplateColumns: '1fr auto', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0', borderBottom: '1px solid #222' }}>
+            <div key={`role-${user.id}`} style={{ display: 'grid', gridTemplateColumns: '1fr auto', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0', borderBottom: '1px solid var(--border)' }}>
               <div>
                 <div style={{ fontWeight: 600 }}>{user.first_name || user.email || 'Unknown user'}</div>
-                <div style={{ fontSize: '0.9rem', color: '#999' }}>Roles: {user.roles.length ? user.roles.join(', ') : 'none'}</div>
+                <div style={{ fontSize: '0.9rem', color: 'var(--muted)' }}>Roles: {user.roles.length ? user.roles.join(', ') : 'none'}</div>
               </div>
               {isAdmin ? (
                 <button
                   disabled={working === `demote-${user.id}`}
                   onClick={() => mutate('/api/admin/roles', { userId: user.id, action: 'demote' }, `demote-${user.id}`)}
-                  style={{ padding: '8px 12px', border: 'none', borderRadius: '6px', background: '#dc2626', color: '#fff', cursor: 'pointer' }}
+                  style={withDisabled(ui.buttonDanger, working === `demote-${user.id}`)}
                 >
                   Demote admin
                 </button>
@@ -205,7 +206,7 @@ export default function AdminPage() {
                 <button
                   disabled={working === `promote-${user.id}`}
                   onClick={() => mutate('/api/admin/roles', { userId: user.id, action: 'promote' }, `promote-${user.id}`)}
-                  style={{ padding: '8px 12px', border: 'none', borderRadius: '6px', background: '#2563eb', color: '#fff', cursor: 'pointer' }}
+                  style={withDisabled(ui.buttonInfo, working === `promote-${user.id}`)}
                 >
                   Promote admin
                 </button>

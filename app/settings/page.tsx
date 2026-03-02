@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../lib/supabase'
+import { ui, withDisabled } from '../ui/styles'
 
 type ApiKeyRecord = {
   id: number
@@ -257,33 +258,33 @@ export default function SettingsPage() {
   }, [])
 
   if (loading) {
-    return <div style={{ minHeight: '100vh', background: '#000', color: '#fff', display: 'grid', placeItems: 'center' }}>Loading settings...</div>
+    return <div style={{ ...ui.page, display: 'grid', placeItems: 'center' }}>Loading settings...</div>
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: '#000', color: '#fff', padding: '1.25rem' }}>
+    <div style={{ ...ui.page, padding: '1.25rem' }}>
       <div style={{ maxWidth: '920px', margin: '0 auto', display: 'grid', gap: '1rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
           <h1 style={{ margin: 0 }}>Settings</h1>
-          <button onClick={() => router.push('/dashboard')} style={{ padding: '8px 12px', background: '#333', border: 'none', borderRadius: '6px', color: '#fff', cursor: 'pointer' }}>
+          <button onClick={() => router.push('/dashboard')} style={ui.buttonSecondary}>
             Back to dashboard
           </button>
         </div>
 
-        {error && <div style={{ background: '#7f1d1d', border: '1px solid #dc2626', borderRadius: '8px', padding: '0.75rem' }}>{error}</div>}
-        {message && <div style={{ background: '#064e3b', border: '1px solid #10b981', borderRadius: '8px', padding: '0.75rem' }}>{message}</div>}
+        {error && <div style={{ background: '#4f1d28', border: '1px solid var(--danger-border)', borderRadius: '8px', padding: '0.75rem' }}>{error}</div>}
+        {message && <div style={{ background: '#0d3d31', border: '1px solid var(--success-border)', borderRadius: '8px', padding: '0.75rem' }}>{message}</div>}
 
-        <section style={{ background: '#111', border: '1px solid #333', borderRadius: '10px', padding: '1rem' }}>
+        <section style={{ ...ui.panel, padding: '1rem' }}>
           <h2 style={{ marginTop: 0 }}>Account</h2>
-          <div style={{ color: '#aaa', display: 'grid', gap: '0.4rem' }}>
-            <div><strong style={{ color: '#fff' }}>Email:</strong> {account?.email || 'Unknown'}</div>
-            <div><strong style={{ color: '#fff' }}>Status:</strong> {account?.status || 'unknown'}</div>
-            <div><strong style={{ color: '#fff' }}>can_use_dev_dashboard:</strong> {String(account?.canUseDevDashboard)}</div>
-            <div><strong style={{ color: '#fff' }}>can_use_scheduler:</strong> {String(account?.canUseScheduler)}</div>
+          <div style={{ color: 'var(--muted)', display: 'grid', gap: '0.4rem' }}>
+            <div><strong style={{ color: 'var(--text)' }}>Email:</strong> {account?.email || 'Unknown'}</div>
+            <div><strong style={{ color: 'var(--text)' }}>Status:</strong> {account?.status || 'unknown'}</div>
+            <div><strong style={{ color: 'var(--text)' }}>can_use_dev_dashboard:</strong> {String(account?.canUseDevDashboard)}</div>
+            <div><strong style={{ color: 'var(--text)' }}>can_use_scheduler:</strong> {String(account?.canUseScheduler)}</div>
           </div>
         </section>
 
-        <section style={{ background: '#111', border: '1px solid #333', borderRadius: '10px', padding: '1rem' }}>
+        <section style={{ ...ui.panel, padding: '1rem' }}>
           <h2 style={{ marginTop: 0 }}>Change password</h2>
           <div style={{ display: 'grid', gap: '0.5rem' }}>
             <input
@@ -291,32 +292,32 @@ export default function SettingsPage() {
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
               placeholder="New password"
-              style={{ padding: '0.55rem', borderRadius: '6px', border: '1px solid #333', background: '#000', color: '#fff' }}
+              style={ui.input}
             />
             <input
               type="password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               placeholder="Confirm new password"
-              style={{ padding: '0.55rem', borderRadius: '6px', border: '1px solid #333', background: '#000', color: '#fff' }}
+              style={ui.input}
             />
-            <button onClick={changePassword} disabled={passwordBusy} style={{ padding: '8px 12px', border: 'none', borderRadius: '6px', background: '#6366f1', color: '#fff', cursor: 'pointer', opacity: passwordBusy ? 0.6 : 1 }}>
+            <button onClick={changePassword} disabled={passwordBusy} style={withDisabled(ui.buttonPrimary, passwordBusy)}>
               {passwordBusy ? 'Updating...' : 'Update password'}
             </button>
           </div>
         </section>
 
-        <section style={{ background: '#111', border: '1px solid #333', borderRadius: '10px', padding: '1rem' }}>
+        <section style={{ ...ui.panel, padding: '1rem' }}>
           <h2 style={{ marginTop: 0 }}>Reset password email</h2>
-          <p style={{ color: '#aaa' }}>Send a reset email to your current address ({account?.email || 'unknown'}).</p>
-          <button onClick={sendReset} disabled={resetBusy} style={{ padding: '8px 12px', border: 'none', borderRadius: '6px', background: '#2563eb', color: '#fff', cursor: 'pointer', opacity: resetBusy ? 0.6 : 1 }}>
+          <p style={{ color: 'var(--muted)' }}>Send a reset email to your current address ({account?.email || 'unknown'}).</p>
+          <button onClick={sendReset} disabled={resetBusy} style={withDisabled(ui.buttonInfo, resetBusy)}>
             {resetBusy ? 'Sending...' : 'Send reset email'}
           </button>
         </section>
 
-        <section style={{ background: '#111', border: '1px solid #333', borderRadius: '10px', padding: '1rem' }}>
+        <section style={{ ...ui.panel, padding: '1rem' }}>
           <h2 style={{ marginTop: 0 }}>OpenClaw API keys</h2>
-          <div style={{ color: '#aaa', marginBottom: '0.75rem' }}>
+          <div style={{ color: 'var(--muted)', marginBottom: '0.75rem' }}>
             Use these with `Authorization: Bearer {'<your_api_key>'}`.
           </div>
 
@@ -326,30 +327,30 @@ export default function SettingsPage() {
               value={keyName}
               onChange={(e) => setKeyName(e.target.value)}
               placeholder="Key name (optional)"
-              style={{ flex: 1, minWidth: '220px', padding: '0.55rem', borderRadius: '6px', border: '1px solid #333', background: '#000', color: '#fff' }}
+              style={{ ...ui.input, flex: 1, minWidth: '220px' }}
             />
-            <button onClick={createKey} disabled={keysBusy} style={{ padding: '8px 12px', border: 'none', borderRadius: '6px', background: '#10b981', color: '#fff', cursor: 'pointer', opacity: keysBusy ? 0.6 : 1 }}>
+            <button onClick={createKey} disabled={keysBusy} style={withDisabled(ui.buttonSuccess, keysBusy)}>
               {keysBusy ? 'Working...' : 'Create key'}
             </button>
           </div>
 
           {newPlainKey && (
-            <div style={{ background: '#0a0a0a', border: '1px solid #334155', borderRadius: '8px', padding: '0.75rem', marginBottom: '0.75rem' }}>
+            <div style={{ ...ui.panelAlt, padding: '0.75rem', marginBottom: '0.75rem' }}>
               <div style={{ fontSize: '0.9rem', marginBottom: '0.4rem' }}>New key (shown once):</div>
-              <code style={{ display: 'block', wordBreak: 'break-all', color: '#93c5fd' }}>{newPlainKey}</code>
+              <code style={{ display: 'block', wordBreak: 'break-all', color: '#a5d3ff' }}>{newPlainKey}</code>
               <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.6rem', flexWrap: 'wrap' }}>
                 <button
                   onClick={async () => {
                     await navigator.clipboard.writeText(newPlainKey)
                     setMessage('API key copied to clipboard')
                   }}
-                  style={{ padding: '6px 10px', border: 'none', borderRadius: '6px', background: '#475569', color: '#fff', cursor: 'pointer' }}
+                  style={ui.buttonInfo}
                 >
                   Copy
                 </button>
                 <button
                   onClick={() => setNewPlainKey('')}
-                  style={{ padding: '6px 10px', border: 'none', borderRadius: '6px', background: '#333', color: '#fff', cursor: 'pointer' }}
+                  style={ui.buttonSecondary}
                 >
                   Hide
                 </button>
@@ -360,39 +361,39 @@ export default function SettingsPage() {
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
               <thead>
-                <tr style={{ textAlign: 'left', color: '#aaa' }}>
-                  <th style={{ borderBottom: '1px solid #333', padding: '0.5rem' }}>Name</th>
-                  <th style={{ borderBottom: '1px solid #333', padding: '0.5rem' }}>Created</th>
-                  <th style={{ borderBottom: '1px solid #333', padding: '0.5rem' }}>Last used</th>
-                  <th style={{ borderBottom: '1px solid #333', padding: '0.5rem' }}>Revoked</th>
-                  <th style={{ borderBottom: '1px solid #333', padding: '0.5rem' }}>Actions</th>
+                <tr style={{ textAlign: 'left', color: 'var(--muted)' }}>
+                  <th style={{ borderBottom: '1px solid var(--border)', padding: '0.5rem' }}>Name</th>
+                  <th style={{ borderBottom: '1px solid var(--border)', padding: '0.5rem' }}>Created</th>
+                  <th style={{ borderBottom: '1px solid var(--border)', padding: '0.5rem' }}>Last used</th>
+                  <th style={{ borderBottom: '1px solid var(--border)', padding: '0.5rem' }}>Revoked</th>
+                  <th style={{ borderBottom: '1px solid var(--border)', padding: '0.5rem' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {keys.length === 0 && (
                   <tr>
-                    <td colSpan={5} style={{ padding: '0.75rem', color: '#666' }}>No API keys yet.</td>
+                    <td colSpan={5} style={{ padding: '0.75rem', color: 'var(--muted)' }}>No API keys yet.</td>
                   </tr>
                 )}
                 {keys.map((row) => (
                   <tr key={row.id}>
-                    <td style={{ borderBottom: '1px solid #222', padding: '0.5rem' }}>{row.name || `Key #${row.id}`}</td>
-                    <td style={{ borderBottom: '1px solid #222', padding: '0.5rem' }}>{fmt(row.created_at)}</td>
-                    <td style={{ borderBottom: '1px solid #222', padding: '0.5rem' }}>{fmt(row.last_used_at)}</td>
-                    <td style={{ borderBottom: '1px solid #222', padding: '0.5rem' }}>{row.revoked_at ? fmt(row.revoked_at) : 'Active'}</td>
-                    <td style={{ borderBottom: '1px solid #222', padding: '0.5rem' }}>
+                    <td style={{ borderBottom: '1px solid var(--border)', padding: '0.5rem' }}>{row.name || `Key #${row.id}`}</td>
+                    <td style={{ borderBottom: '1px solid var(--border)', padding: '0.5rem' }}>{fmt(row.created_at)}</td>
+                    <td style={{ borderBottom: '1px solid var(--border)', padding: '0.5rem' }}>{fmt(row.last_used_at)}</td>
+                    <td style={{ borderBottom: '1px solid var(--border)', padding: '0.5rem' }}>{row.revoked_at ? fmt(row.revoked_at) : 'Active'}</td>
+                    <td style={{ borderBottom: '1px solid var(--border)', padding: '0.5rem' }}>
                       <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                         <button
                           disabled={Boolean(row.revoked_at) || keysBusy}
                           onClick={() => revokeKey(row.id)}
-                          style={{ padding: '6px 10px', border: 'none', borderRadius: '6px', background: row.revoked_at ? '#222' : '#dc2626', color: '#fff', cursor: row.revoked_at ? 'default' : 'pointer', opacity: keysBusy ? 0.6 : 1 }}
+                          style={withDisabled(row.revoked_at ? ui.buttonSecondary : ui.buttonDanger, Boolean(row.revoked_at) || keysBusy)}
                         >
                           Revoke
                         </button>
                         <button
                           disabled={keysBusy}
                           onClick={() => deleteKey(row.id)}
-                          style={{ padding: '6px 10px', border: 'none', borderRadius: '6px', background: '#333', color: '#fff', cursor: 'pointer', opacity: keysBusy ? 0.6 : 1 }}
+                          style={withDisabled(ui.buttonSecondary, keysBusy)}
                         >
                           Delete
                         </button>
@@ -405,11 +406,11 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        <section style={{ background: '#111', border: '1px solid #333', borderRadius: '10px', padding: '1rem' }}>
+        <section style={{ ...ui.panel, padding: '1rem' }}>
           <h2 style={{ marginTop: 0 }}>OpenClaw bot endpoints</h2>
-          <div style={{ color: '#aaa', display: 'grid', gap: '0.5rem' }}>
+          <div style={{ color: 'var(--muted)', display: 'grid', gap: '0.5rem' }}>
             {botEndpoints.map((url) => (
-              <code key={url} style={{ background: '#000', border: '1px solid #222', padding: '0.5rem', borderRadius: '6px', color: '#93c5fd' }}>{url}</code>
+              <code key={url} style={{ ...ui.panelAlt, padding: '0.5rem', color: '#a5d3ff' }}>{url}</code>
             ))}
           </div>
         </section>

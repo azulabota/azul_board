@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../../lib/supabase'
+import { ui, withDisabled } from '../../ui/styles'
 
 type ContentItem = {
   id: number
@@ -94,6 +95,9 @@ export default function ContentCalendar() {
     color: '#64748b',
     days: [0, 1, 2, 3, 4, 5, 6]
   })
+  const [pendingDeletePipeline, setPendingDeletePipeline] = useState<Pipeline | null>(null)
+  const [deleteMode, setDeleteMode] = useState<'reassign' | 'none'>('reassign')
+  const [deleteToPipelineKey, setDeleteToPipelineKey] = useState('')
 
   const pipelineKeyOptions = useMemo(() => {
     if (pipelines.length === 0) return [{ value: 'short_form', label: 'Short Form' }]
@@ -225,6 +229,16 @@ export default function ContentCalendar() {
     return map
   }, [pipelines])
 
+  const deleteTargetUsageCount = useMemo(() => {
+    if (!pendingDeletePipeline) return 0
+    return contentItems.filter((item) => (item.pipeline_key || item.type) === pendingDeletePipeline.key).length
+  }, [contentItems, pendingDeletePipeline])
+
+  const reassignPipelineOptions = useMemo(() => {
+    if (!pendingDeletePipeline) return []
+    return pipelines.filter((p) => p.key !== pendingDeletePipeline.key)
+  }, [pendingDeletePipeline, pipelines])
+
   const colorForItem = (item: ContentItem) => {
     const k = item.pipeline_key || item.type
     return pipelineByKey.get(k)?.color || '#64748b'
@@ -355,20 +369,68 @@ export default function ContentCalendar() {
     setPipelineBusy(false)
   }
 
-  const deletePipeline = async (p: Pipeline) => {
-    if (!userId) return
+  const deletePipeline = (p: Pipeline) => {
+    const options = pipelines.filter((x) => x.key !== p.key)
+    setPendingDeletePipeline(p)
+    setDeleteMode(options.length ? 'reassign' : 'none')
+    setDeleteToPipelineKey(options[0]?.key || '')
+  }
 
-    const inUse = contentItems.some((i) => (i.pipeline_key || i.type) === p.key)
-    const msg = inUse
-      ? `This pipeline is used by existing content. If you delete it, those items will keep the old key, but they\'ll show a gray color. Delete anyway?`
-      : 'Delete this pipeline?'
+  const confirmDeletePipeline = async () => {
+    if (!userId || !pendingDeletePipeline) return
 
-    if (!confirm(msg)) return
-
+    const target = pendingDeletePipeline
     setPipelineBusy(true)
     setPipelineError('')
 
-    const { error: delError } = await supabase.from('content_pipelines').delete().eq('id', p.id).eq('user_id', userId)
+    if (deleteTargetUsageCount > 0) {
+      if (deleteMode === 'reassign') {
+        if (!deleteToPipelineKey) {
+          setPipelineError('Select a destination pipeline before deleting.')
+          setPipelineBusy(false)
+          return
+        }
+
+        const { error: moveAssignedError } = await supabase
+          .from('content_items')
+          .update({ pipeline_key: deleteToPipelineKey })
+          .eq('user_id', userId)
+          .eq('pipeline_key', target.key)
+
+        if (moveAssignedError) {
+          setPipelineError(moveAssignedError.message)
+          setPipelineBusy(false)
+          return
+        }
+
+        const { error: moveLegacyError } = await supabase
+          .from('content_items')
+          .update({ pipeline_key: deleteToPipelineKey })
+          .eq('user_id', userId)
+          .is('pipeline_key', null)
+          .eq('type', target.key)
+
+        if (moveLegacyError) {
+          setPipelineError(moveLegacyError.message)
+          setPipelineBusy(false)
+          return
+        }
+      } else {
+        const { error: clearError } = await supabase
+          .from('content_items')
+          .update({ pipeline_key: null })
+          .eq('user_id', userId)
+          .eq('pipeline_key', target.key)
+
+        if (clearError) {
+          setPipelineError(clearError.message)
+          setPipelineBusy(false)
+          return
+        }
+      }
+    }
+
+    const { error: delError } = await supabase.from('content_pipelines').delete().eq('id', target.id).eq('user_id', userId)
 
     if (delError) {
       setPipelineError(delError.message)
@@ -376,12 +438,13 @@ export default function ContentCalendar() {
       return
     }
 
-    if (newItem.pipeline_key === p.key) {
-      const next = pipelines.find((x) => x.key !== p.key)
+    if (newItem.pipeline_key === target.key) {
+      const next = pipelines.find((x) => x.key !== target.key)
       setNewItem((prev) => ({ ...prev, pipeline_key: next?.key || 'short_form' }))
     }
 
-    await loadPipelinesAndMaybeSeed(userId)
+    setPendingDeletePipeline(null)
+    await Promise.all([loadPipelinesAndMaybeSeed(userId), loadItems(userId)])
     setPipelineBusy(false)
   }
 
@@ -410,15 +473,15 @@ export default function ContentCalendar() {
   }
 
   if (loading) {
-    return <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: '#000', color: '#fff' }}>Loading calendar...</div>
+    return <div style={{ ...ui.page, display: 'grid', placeItems: 'center' }}>Loading calendar...</div>
   }
 
   if (!access || access.status !== 'active' || !access.canUseScheduler) {
     return (
-      <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: '#000', color: '#fff', padding: '1rem' }}>
-        <div style={{ background: '#111', border: '1px solid #333', borderRadius: '10px', padding: '1rem', maxWidth: '560px' }}>
+      <div style={{ ...ui.page, display: 'grid', placeItems: 'center', padding: '1rem' }}>
+        <div style={{ ...ui.panel, padding: '1rem', maxWidth: '560px' }}>
           <h2 style={{ marginTop: 0 }}>No access</h2>
-          <p style={{ color: '#aaa' }}>
+          <p style={{ color: 'var(--muted)' }}>
             Your account does not have scheduler access. Contact an admin to enable `can_use_scheduler` and set your status to active.
           </p>
         </div>
@@ -429,65 +492,65 @@ export default function ContentCalendar() {
   const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 
   return (
-    <div style={{ padding: '1.5rem', background: '#0a0a0a', minHeight: '100vh', color: '#fff' }}>
+    <div style={{ ...ui.page, padding: '1.5rem' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', gap: '1rem', flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
           <h1 style={{ margin: 0, fontSize: '1.5rem' }}>Content Calendar</h1>
           <button
             onClick={() => setShowManagePipelines((v) => !v)}
-            style={{ padding: '8px 12px', background: showManagePipelines ? '#4c1d95' : '#333', border: 'none', color: '#fff', borderRadius: '6px', cursor: 'pointer' }}
+            style={showManagePipelines ? ui.buttonPrimary : ui.buttonSecondary}
           >
             {showManagePipelines ? 'Hide Pipelines' : 'Manage Pipelines'}
           </button>
         </div>
-        <button onClick={() => router.push('/dashboard')} style={{ padding: '8px 12px', background: '#333', border: 'none', color: '#fff', borderRadius: '6px', cursor: 'pointer' }}>
+        <button onClick={() => router.push('/dashboard')} style={ui.buttonSecondary}>
           Back to dashboard
         </button>
       </div>
 
-      {error && <div style={{ marginBottom: '0.75rem', background: '#7f1d1d', border: '1px solid #dc2626', borderRadius: '8px', padding: '0.75rem' }}>{error}</div>}
+      {error && <div style={{ marginBottom: '0.75rem', background: '#4f1d28', border: '1px solid var(--danger-border)', borderRadius: '8px', padding: '0.75rem' }}>{error}</div>}
 
       {pipelineError && (
-        <div style={{ marginBottom: '0.75rem', background: '#3b0a0a', border: '1px solid #dc2626', borderRadius: '8px', padding: '0.75rem' }}>
+        <div style={{ marginBottom: '0.75rem', background: '#4f1d28', border: '1px solid var(--danger-border)', borderRadius: '8px', padding: '0.75rem' }}>
           Pipelines error: {pipelineError}
         </div>
       )}
 
       {showManagePipelines && (
-        <div style={{ background: '#111', borderRadius: '12px', padding: '1rem', marginBottom: '1rem', border: '1px solid #222' }}>
+        <div style={{ ...ui.panel, padding: '1rem', marginBottom: '1rem' }}>
           <h2 style={{ marginTop: 0, fontSize: '1.1rem' }}>Pipelines</h2>
-          <p style={{ marginTop: 0, color: '#aaa', fontSize: '0.9rem' }}>
+          <p style={{ marginTop: 0, color: 'var(--muted)', fontSize: '0.9rem' }}>
             Pipelines control your posting categories (name, color, and which days you intend to post them).
           </p>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-            <div style={{ background: '#0a0a0a', border: '1px solid #222', borderRadius: '10px', padding: '0.75rem' }}>
+            <div style={{ ...ui.panelAlt, padding: '0.75rem' }}>
               <h3 style={{ marginTop: 0, fontSize: '0.95rem' }}>Create pipeline</h3>
               <input
                 placeholder="Name"
                 value={newPipeline.name}
                 onChange={(e) => setNewPipeline((p) => ({ ...p, name: e.target.value, key: p.key || slugify(e.target.value) }))}
-                style={{ width: '100%', padding: '0.5rem', background: '#000', border: '1px solid #333', borderRadius: '6px', color: '#fff', marginBottom: '0.5rem' }}
+                style={{ ...ui.input, marginBottom: '0.5rem' }}
               />
               <input
                 placeholder="Key (slug)"
                 value={newPipeline.key}
                 onChange={(e) => setNewPipeline((p) => ({ ...p, key: slugify(e.target.value) }))}
-                style={{ width: '100%', padding: '0.5rem', background: '#000', border: '1px solid #333', borderRadius: '6px', color: '#fff', marginBottom: '0.5rem' }}
+                style={{ ...ui.input, marginBottom: '0.5rem' }}
               />
               <input
                 placeholder="Brief explanation"
                 value={newPipeline.description}
                 onChange={(e) => setNewPipeline((p) => ({ ...p, description: e.target.value }))}
-                style={{ width: '100%', padding: '0.5rem', background: '#000', border: '1px solid #333', borderRadius: '6px', color: '#fff', marginBottom: '0.5rem' }}
+                style={{ ...ui.input, marginBottom: '0.5rem' }}
               />
               <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.5rem' }}>
                 <input type="color" value={newPipeline.color} onChange={(e) => setNewPipeline((p) => ({ ...p, color: e.target.value }))} />
-                <span style={{ color: '#aaa', fontSize: '0.85rem' }}>Color</span>
+                <span style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>Color</span>
               </div>
               <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
                 {DOW.map((d) => (
-                  <label key={d.i} style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.85rem', color: '#ddd' }}>
+                  <label key={d.i} style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.85rem', color: 'var(--text)' }}>
                     <input
                       type="checkbox"
                       checked={newPipeline.days.includes(d.i)}
@@ -500,82 +563,136 @@ export default function ContentCalendar() {
               <button
                 onClick={() => void createPipeline()}
                 disabled={pipelineBusy}
-                style={{ width: '100%', padding: '0.55rem', background: '#6366f1', border: 'none', borderRadius: '6px', color: '#fff', cursor: 'pointer', opacity: pipelineBusy ? 0.6 : 1 }}
+                style={withDisabled({ ...ui.buttonPrimary, width: '100%', padding: '0.55rem' }, pipelineBusy)}
               >
                 {pipelineBusy ? 'Saving...' : 'Create'}
               </button>
             </div>
 
-            <div style={{ background: '#0a0a0a', border: '1px solid #222', borderRadius: '10px', padding: '0.75rem' }}>
+            <div style={{ ...ui.panelAlt, padding: '0.75rem' }}>
               <h3 style={{ marginTop: 0, fontSize: '0.95rem' }}>Existing pipelines</h3>
               {pipelines.length === 0 ? (
-                <div style={{ color: '#777' }}>No pipelines found.</div>
+                <div style={{ color: 'var(--muted)' }}>No pipelines found.</div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                   {pipelines.map((p) => (
-                    <div key={p.id} style={{ border: '1px solid #222', borderRadius: '10px', padding: '0.6rem' }}>
+                    <div key={p.id} style={{ border: '1px solid var(--border)', borderRadius: '10px', padding: '0.6rem' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem', alignItems: 'center' }}>
                         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                           <div style={{ width: 10, height: 10, borderRadius: '50%', background: p.color }} />
                           <div>
                             <div style={{ fontWeight: 700 }}>{p.name}</div>
-                            <div style={{ fontSize: '0.8rem', color: '#888' }}>{p.key}</div>
+                            <div style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>{p.key}</div>
                           </div>
                         </div>
                         <div style={{ display: 'flex', gap: '0.4rem' }}>
-                          <button onClick={() => startEditPipeline(p)} style={{ padding: '6px 10px', background: '#333', border: 'none', color: '#fff', borderRadius: '6px', cursor: 'pointer' }}>
+                          <button onClick={() => startEditPipeline(p)} style={ui.buttonSecondary}>
                             Edit
                           </button>
-                          <button onClick={() => void deletePipeline(p)} style={{ padding: '6px 10px', background: '#dc2626', border: 'none', color: '#fff', borderRadius: '6px', cursor: 'pointer' }}>
+                          <button onClick={() => deletePipeline(p)} style={ui.buttonDanger}>
                             Delete
                           </button>
                         </div>
                       </div>
-                      {p.description && <div style={{ marginTop: '0.4rem', color: '#aaa', fontSize: '0.9rem' }}>{p.description}</div>}
-                      <div style={{ marginTop: '0.5rem', color: '#aaa', fontSize: '0.85rem' }}>
+                      {p.description && <div style={{ marginTop: '0.4rem', color: 'var(--muted)', fontSize: '0.9rem' }}>{p.description}</div>}
+                      <div style={{ marginTop: '0.5rem', color: 'var(--muted)', fontSize: '0.85rem' }}>
                         Days: {DOW.filter((d) => p.days_of_week?.includes(d.i)).map((d) => d.label).join(', ') || '—'}
                       </div>
                     </div>
                   ))}
                 </div>
               )}
+
+              {pendingDeletePipeline && (
+                <div style={{ ...ui.panel, marginTop: '0.8rem', padding: '0.75rem' }}>
+                  <h4 style={{ margin: '0 0 0.35rem 0' }}>Delete "{pendingDeletePipeline.name}"</h4>
+                  {deleteTargetUsageCount > 0 ? (
+                    <>
+                      <p style={{ margin: '0 0 0.5rem 0', color: 'var(--muted)', fontSize: '0.9rem' }}>
+                        This pipeline is used by {deleteTargetUsageCount} post{deleteTargetUsageCount === 1 ? '' : 's'}. Choose where those posts should go before deleting.
+                      </p>
+                      <div style={{ display: 'grid', gap: '0.45rem' }}>
+                        <label style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                          <input
+                            type="radio"
+                            checked={deleteMode === 'reassign'}
+                            onChange={() => setDeleteMode('reassign')}
+                            disabled={!reassignPipelineOptions.length}
+                          />
+                          <span>Move posts to another pipeline</span>
+                        </label>
+                        <select
+                          value={deleteToPipelineKey}
+                          onChange={(e) => setDeleteToPipelineKey(e.target.value)}
+                          style={{ ...ui.input, opacity: deleteMode === 'reassign' ? 1 : 0.75 }}
+                          disabled={deleteMode !== 'reassign' || reassignPipelineOptions.length === 0}
+                        >
+                          {reassignPipelineOptions.length === 0 ? (
+                            <option value="">No destination pipelines available</option>
+                          ) : (
+                            reassignPipelineOptions.map((p) => (
+                              <option key={p.id} value={p.key}>{p.name}</option>
+                            ))
+                          )}
+                        </select>
+                        <label style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                          <input type="radio" checked={deleteMode === 'none'} onChange={() => setDeleteMode('none')} />
+                          <span>Move posts to no pipeline (set pipeline_key to null)</span>
+                        </label>
+                      </div>
+                    </>
+                  ) : (
+                    <p style={{ margin: '0 0 0.5rem 0', color: 'var(--muted)', fontSize: '0.9rem' }}>
+                      No posts currently use this pipeline. Confirm deletion.
+                    </p>
+                  )}
+                  <div style={{ display: 'flex', gap: '0.45rem', marginTop: '0.65rem' }}>
+                    <button onClick={() => setPendingDeletePipeline(null)} style={ui.buttonSecondary} disabled={pipelineBusy}>
+                      Cancel
+                    </button>
+                    <button onClick={() => void confirmDeletePipeline()} style={withDisabled(ui.buttonDanger, pipelineBusy)} disabled={pipelineBusy}>
+                      {pipelineBusy ? 'Deleting...' : 'Confirm delete'}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
           {editingPipelineId && (
-            <div style={{ marginTop: '1rem', background: '#0a0a0a', border: '1px solid #222', borderRadius: '10px', padding: '0.75rem' }}>
+            <div style={{ ...ui.panelAlt, marginTop: '1rem', padding: '0.75rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem', alignItems: 'center', marginBottom: '0.5rem' }}>
                 <h3 style={{ margin: 0, fontSize: '0.95rem' }}>Edit pipeline</h3>
-                <button onClick={() => setEditingPipelineId(null)} style={{ padding: '6px 10px', background: '#333', border: 'none', color: '#fff', borderRadius: '6px', cursor: 'pointer' }}>
+                <button onClick={() => setEditingPipelineId(null)} style={ui.buttonSecondary}>
                   Close
                 </button>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                 <div>
-                  <div style={{ color: '#888', fontSize: '0.8rem', marginBottom: '0.25rem' }}>Key (locked)</div>
-                  <input value={editPipeline.key} disabled style={{ width: '100%', padding: '0.5rem', background: '#111', border: '1px solid #333', borderRadius: '6px', color: '#999', marginBottom: '0.5rem' }} />
+                  <div style={{ color: 'var(--muted)', fontSize: '0.8rem', marginBottom: '0.25rem' }}>Key (locked)</div>
+                  <input value={editPipeline.key} disabled style={{ ...ui.input, color: 'var(--muted)', marginBottom: '0.5rem' }} />
                   <input
                     placeholder="Name"
                     value={editPipeline.name}
                     onChange={(e) => setEditPipeline((p) => ({ ...p, name: e.target.value }))}
-                    style={{ width: '100%', padding: '0.5rem', background: '#000', border: '1px solid #333', borderRadius: '6px', color: '#fff', marginBottom: '0.5rem' }}
+                    style={{ ...ui.input, marginBottom: '0.5rem' }}
                   />
                   <input
                     placeholder="Brief explanation"
                     value={editPipeline.description}
                     onChange={(e) => setEditPipeline((p) => ({ ...p, description: e.target.value }))}
-                    style={{ width: '100%', padding: '0.5rem', background: '#000', border: '1px solid #333', borderRadius: '6px', color: '#fff', marginBottom: '0.5rem' }}
+                    style={{ ...ui.input, marginBottom: '0.5rem' }}
                   />
                   <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.5rem' }}>
                     <input type="color" value={editPipeline.color} onChange={(e) => setEditPipeline((p) => ({ ...p, color: e.target.value }))} />
-                    <span style={{ color: '#aaa', fontSize: '0.85rem' }}>Color</span>
+                    <span style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>Color</span>
                   </div>
                 </div>
                 <div>
-                  <div style={{ color: '#888', fontSize: '0.8rem', marginBottom: '0.25rem' }}>Days of week</div>
+                  <div style={{ color: 'var(--muted)', fontSize: '0.8rem', marginBottom: '0.25rem' }}>Days of week</div>
                   <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
                     {DOW.map((d) => (
-                      <label key={d.i} style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.85rem', color: '#ddd' }}>
+                      <label key={d.i} style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.85rem', color: 'var(--text)' }}>
                         <input
                           type="checkbox"
                           checked={editPipeline.days.includes(d.i)}
@@ -588,7 +705,7 @@ export default function ContentCalendar() {
                   <button
                     onClick={() => void saveEditPipeline()}
                     disabled={pipelineBusy}
-                    style={{ width: '100%', padding: '0.55rem', background: '#10b981', border: 'none', borderRadius: '6px', color: '#fff', cursor: 'pointer', opacity: pipelineBusy ? 0.6 : 1 }}
+                    style={withDisabled({ ...ui.buttonSuccess, width: '100%', padding: '0.55rem' }, pipelineBusy)}
                   >
                     {pipelineBusy ? 'Saving...' : 'Save changes'}
                   </button>
@@ -603,12 +720,12 @@ export default function ContentCalendar() {
         {pipelines.map((p) => (
           <div key={p.key} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.75rem' }}>
             <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: p.color }} />
-            <span style={{ color: '#aaa' }}>{p.name}</span>
+            <span style={{ color: 'var(--muted)' }}>{p.name}</span>
           </div>
         ))}
       </div>
 
-      <div style={{ background: '#111', borderRadius: '12px', padding: '1rem', marginBottom: '1rem' }}>
+      <div style={{ ...ui.panel, padding: '1rem', marginBottom: '1rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
           <button
             onClick={() => {
@@ -619,7 +736,7 @@ export default function ContentCalendar() {
                 setViewMonth(viewMonth - 1)
               }
             }}
-            style={{ background: '#333', border: 'none', color: '#fff', padding: '8px 12px', borderRadius: '4px', cursor: 'pointer' }}
+            style={ui.buttonSecondary}
           >
             ←
           </button>
@@ -633,7 +750,7 @@ export default function ContentCalendar() {
                 setViewMonth(viewMonth + 1)
               }
             }}
-            style={{ background: '#333', border: 'none', color: '#fff', padding: '8px 12px', borderRadius: '4px', cursor: 'pointer' }}
+            style={ui.buttonSecondary}
           >
             →
           </button>
@@ -641,7 +758,7 @@ export default function ContentCalendar() {
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '0.35rem', marginBottom: '0.35rem' }}>
           {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => (
-            <div key={d} style={{ textAlign: 'center', fontSize: '0.75rem', color: '#666', padding: '0.4rem' }}>{d}</div>
+            <div key={d} style={{ textAlign: 'center', fontSize: '0.75rem', color: 'var(--muted)', padding: '0.4rem' }}>{d}</div>
           ))}
         </div>
 
@@ -652,8 +769,8 @@ export default function ContentCalendar() {
               onClick={() => day && setSelectedDate(getDateStr(day))}
               style={{
                 height: '62px',
-                background: day && selectedDate === getDateStr(day) ? '#1a1a1a' : '#0a0a0a',
-                border: day && selectedDate === getDateStr(day) ? '1px solid #444' : '1px solid transparent',
+                background: day && selectedDate === getDateStr(day) ? 'var(--surface-2)' : 'var(--surface)',
+                border: day && selectedDate === getDateStr(day) ? '1px solid var(--accent)' : '1px solid transparent',
                 borderRadius: '8px',
                 padding: '0.5rem',
                 cursor: day ? 'pointer' : 'default',
@@ -676,21 +793,21 @@ export default function ContentCalendar() {
       </div>
 
       {selectedDate && (
-        <div style={{ background: '#111', borderRadius: '12px', padding: '1rem' }}>
+        <div style={{ ...ui.panel, padding: '1rem' }}>
           <h2 style={{ marginTop: 0, fontSize: '1.1rem' }}>{new Date(selectedDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</h2>
-          <div style={{ background: '#1a1a1a', borderRadius: '8px', padding: '0.75rem', marginBottom: '0.75rem' }}>
+          <div style={{ ...ui.panelAlt, padding: '0.75rem', marginBottom: '0.75rem' }}>
             <input
               type="text"
               placeholder="Content title"
               value={newItem.title}
               onChange={(e) => setNewItem({ ...newItem, title: e.target.value })}
-              style={{ width: '100%', padding: '0.5rem', background: '#000', border: '1px solid #333', borderRadius: '4px', color: '#fff', marginBottom: '0.5rem' }}
+              style={{ ...ui.input, marginBottom: '0.5rem' }}
             />
             <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
               <select
                 value={newItem.pipeline_key}
                 onChange={(e) => setNewItem({ ...newItem, pipeline_key: e.target.value })}
-                style={{ flex: 1, padding: '0.5rem', background: '#000', border: '1px solid #333', borderRadius: '4px', color: '#fff' }}
+                style={{ ...ui.input, flex: 1 }}
               >
                 {pipelineKeyOptions.map((opt) => (
                   <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -699,7 +816,7 @@ export default function ContentCalendar() {
               <select
                 value={newItem.platform}
                 onChange={(e) => setNewItem({ ...newItem, platform: e.target.value })}
-                style={{ flex: 1, padding: '0.5rem', background: '#000', border: '1px solid #333', borderRadius: '4px', color: '#fff' }}
+                style={{ ...ui.input, flex: 1 }}
               >
                 <option value="X">X</option>
                 <option value="LinkedIn">LinkedIn</option>
@@ -711,33 +828,33 @@ export default function ContentCalendar() {
               placeholder="Content details"
               value={newItem.content}
               onChange={(e) => setNewItem({ ...newItem, content: e.target.value })}
-              style={{ width: '100%', padding: '0.5rem', background: '#000', border: '1px solid #333', borderRadius: '4px', color: '#fff', marginBottom: '0.5rem', minHeight: '60px' }}
+              style={{ ...ui.input, marginBottom: '0.5rem', minHeight: '60px' }}
             />
             <button
               onClick={addContent}
               disabled={saving || !newItem.title.trim()}
-              style={{ width: '100%', padding: '0.5rem', background: '#6366f1', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', opacity: saving ? 0.5 : 1 }}
+              style={withDisabled({ ...ui.buttonPrimary, width: '100%' }, saving || !newItem.title.trim())}
             >
               {saving ? 'Adding...' : 'Add content'}
             </button>
           </div>
 
           {getContentForDay(parseInt(selectedDate.split('-')[2], 10)).length === 0 ? (
-            <div style={{ color: '#777' }}>No content scheduled for this day.</div>
+            <div style={{ color: 'var(--muted)' }}>No content scheduled for this day.</div>
           ) : (
             getContentForDay(parseInt(selectedDate.split('-')[2], 10)).map((item) => {
               const k = item.pipeline_key || item.type
               const pipeline = pipelineByKey.get(k)
               return (
-                <div key={item.id} style={{ background: '#0a0a0a', borderRadius: '8px', padding: '0.75rem', marginBottom: '0.5rem', borderLeft: `3px solid ${colorForItem(item)}` }}>
+                <div key={item.id} style={{ ...ui.panelAlt, padding: '0.75rem', marginBottom: '0.5rem', borderLeft: `3px solid ${colorForItem(item)}` }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
                     <div>
                       <div style={{ fontWeight: 600 }}>{item.title}</div>
-                      <div style={{ fontSize: '0.8rem', color: '#888' }}>{item.platform}{pipeline ? ` • ${pipeline.name}` : ''}</div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>{item.platform}{pipeline ? ` • ${pipeline.name}` : ''}</div>
                     </div>
-                    <button onClick={() => deleteContent(item.id)} style={{ padding: '6px 10px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Delete</button>
+                    <button onClick={() => deleteContent(item.id)} style={ui.buttonDanger}>Delete</button>
                   </div>
-                  {item.content && <div style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: '#bbb' }}>{item.content}</div>}
+                  {item.content && <div style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: 'var(--text)' }}>{item.content}</div>}
                 </div>
               )
             })

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../lib/supabase'
+import { ui } from '../ui/styles'
 
 type Status = 'todo' | 'in_progress' | 'blocked' | 'done'
 type TopTab = 'progress' | 'dev'
@@ -340,18 +341,12 @@ export default function Dashboard() {
           </button>
         </div>
 
-        {isAdmin && (
-          <button onClick={() => router.push('/admin')} style={btnInfo}>
-            {sidebarCollapsed ? 'ADM' : 'Admin'}
-          </button>
-        )}
         {canUseScheduler && (
           <button
             onClick={() => router.push('/dashboard/content')}
             style={{
               ...btnPrimary,
-              border: '1px solid #7c3aed',
-              background: '#5b21b6'
+              boxShadow: '0 0 0 1px rgba(228, 58, 75, 0.32) inset'
             }}
           >
             {sidebarCollapsed ? 'CAL' : 'Calendar'}
@@ -360,6 +355,12 @@ export default function Dashboard() {
         <button onClick={() => router.push('/settings')} style={btnSecondary}>
           {sidebarCollapsed ? 'SET' : 'Settings'}
         </button>
+        {isAdmin && (
+          <button onClick={() => router.push('/admin')} style={btnInfo}>
+            {sidebarCollapsed ? 'ADM' : 'Admin'}
+          </button>
+        )}
+        <div style={{ flex: 1 }} />
         <button onClick={handleLogout} style={btnDanger}>
           {sidebarCollapsed ? 'OUT' : 'Logout'}
         </button>
@@ -668,11 +669,7 @@ const fieldValue: React.CSSProperties = {
 
 const inputStyle: React.CSSProperties = {
   width: '100%',
-  background: 'var(--bg)',
-  color: 'var(--text)',
-  border: '1px solid var(--border)',
-  borderRadius: 8,
-  padding: '0.5rem 0.6rem'
+  ...ui.input
 }
 
 const textAreaStyle: React.CSSProperties = {
@@ -697,48 +694,24 @@ const tabActive: React.CSSProperties = {
 }
 
 const btnGhost: React.CSSProperties = {
-  padding: '0.45rem 0.6rem',
-  borderRadius: 8,
-  border: '1px solid var(--border)',
-  background: 'transparent',
-  color: 'var(--text)',
-  cursor: 'pointer'
+  ...ui.buttonGhost,
+  padding: '0.45rem 0.6rem'
 }
 
 const btnPrimary: React.CSSProperties = {
-  padding: '0.5rem 0.75rem',
-  borderRadius: 8,
-  border: '1px solid #3b82f6',
-  background: '#1d4ed8',
-  color: '#f8fafc',
-  cursor: 'pointer'
+  ...ui.buttonPrimary
 }
 
 const btnSecondary: React.CSSProperties = {
-  padding: '0.5rem 0.75rem',
-  borderRadius: 8,
-  border: '1px solid var(--border)',
-  background: 'var(--surface-2)',
-  color: 'var(--text)',
-  cursor: 'pointer'
+  ...ui.buttonSecondary
 }
 
 const btnDanger: React.CSSProperties = {
-  padding: '0.5rem 0.75rem',
-  borderRadius: 8,
-  border: '1px solid #b91c1c',
-  background: '#991b1b',
-  color: '#fef2f2',
-  cursor: 'pointer'
+  ...ui.buttonDanger
 }
 
 const btnInfo: React.CSSProperties = {
-  padding: '0.5rem 0.75rem',
-  borderRadius: 8,
-  border: '1px solid #1d4ed8',
-  background: '#1e3a8a',
-  color: '#eff6ff',
-  cursor: 'pointer'
+  ...ui.buttonInfo
 }
 
 const miniBtn: React.CSSProperties = {
