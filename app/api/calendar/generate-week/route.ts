@@ -18,6 +18,15 @@ type PipelineRow = {
   post_time_start: string | null
   post_time_end: string | null
   is_enabled: boolean
+
+  gen_length?: string | null
+  gen_min_words?: number | null
+  gen_max_words?: number | null
+  gen_must_start_with?: string | null
+  gen_must_end_question?: boolean | null
+  gen_include_cta?: boolean | null
+  gen_no_hashtags?: boolean | null
+  gen_no_emojis?: boolean | null
 }
 
 const isoDate = (d: Date) => {
@@ -51,7 +60,7 @@ export async function POST(request: NextRequest) {
   // Pipelines
   let pipelinesQuery = supabase
     .from('content_pipelines')
-    .select('key, name, description, days_of_week, timezone, post_time, post_time_start, post_time_end, is_enabled')
+    .select('key, name, description, days_of_week, timezone, post_time, post_time_start, post_time_end, is_enabled, gen_length, gen_min_words, gen_max_words, gen_must_start_with, gen_must_end_question, gen_include_cta, gen_no_hashtags, gen_no_emojis')
     .eq('user_id', auth.userId)
     .eq('is_enabled', true)
 
@@ -70,7 +79,23 @@ export async function POST(request: NextRequest) {
 
   // Build desired slots: next N days, filtered by pipeline days_of_week
   const today = new Date()
-  const slots: Array<{ date: string; scheduled_at: string | null; pipeline_key: string; pipeline_name: string; description: string | null }> = []
+  const slots: Array<{
+    date: string
+    scheduled_at: string | null
+    pipeline_key: string
+    pipeline_name: string
+    description: string | null
+    gen: {
+      length: string
+      min_words: number | null
+      max_words: number | null
+      must_start_with: string | null
+      must_end_question: boolean
+      include_cta: boolean
+      no_hashtags: boolean
+      no_emojis: boolean
+    }
+  }> = []
 
   for (let i = 0; i < days; i += 1) {
     const d = new Date(today)
@@ -89,7 +114,17 @@ export async function POST(request: NextRequest) {
         scheduled_at,
         pipeline_key: p.key,
         pipeline_name: p.name,
-        description: p.description || null
+        description: p.description || null,
+        gen: {
+          length: (p.gen_length || 'short') as string,
+          min_words: p.gen_min_words ?? null,
+          max_words: p.gen_max_words ?? null,
+          must_start_with: p.gen_must_start_with ?? null,
+          must_end_question: Boolean(p.gen_must_end_question),
+          include_cta: p.gen_include_cta !== false,
+          no_hashtags: p.gen_no_hashtags !== false,
+          no_emojis: p.gen_no_emojis !== false
+        }
       })
     }
   }

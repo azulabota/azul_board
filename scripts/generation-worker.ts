@@ -8,6 +8,16 @@ type Slot = {
   pipeline_key: string
   pipeline_name: string
   description: string | null
+  gen?: {
+    length?: string
+    min_words?: number | null
+    max_words?: number | null
+    must_start_with?: string | null
+    must_end_question?: boolean
+    include_cta?: boolean
+    no_hashtags?: boolean
+    no_emojis?: boolean
+  }
 }
 
 type GenerationJobRow = {
@@ -61,6 +71,30 @@ const buildPrompt = (slot: Slot, platform: string, recentExamples: string[], ext
         .join('\n')}\n`
     : ''
 
+  const rules = {
+    length: slot.gen?.length || 'short',
+    minWords: slot.gen?.min_words ?? null,
+    maxWords: slot.gen?.max_words ?? null,
+    mustStart: (slot.gen?.must_start_with || '').trim(),
+    mustEndQ: Boolean(slot.gen?.must_end_question),
+    includeCta: slot.gen?.include_cta !== false,
+    noHashtags: slot.gen?.no_hashtags !== false,
+    noEmojis: slot.gen?.no_emojis !== false
+  }
+
+  const lengthRule =
+    rules.length === 'long'
+      ? `- Length: long single post. Target ${rules.minWords || 120}-${rules.maxWords || 220} words.`
+      : rules.length === 'medium'
+        ? '- Length: medium. Target 45-110 words.'
+        : '- Length: short. 1-2 sentences.'
+
+  const mustStartRule = rules.mustStart ? `- Must start with: ${JSON.stringify(rules.mustStart)}.` : ''
+  const endQRule = rules.mustEndQ ? '- Must end with a question mark.' : ''
+  const ctaRule = rules.includeCta ? '- Include a clear CTA (no fluff).' : ''
+  const hashtagRule = rules.noHashtags ? '- No hashtags.' : ''
+  const emojiRule = rules.noEmojis ? '- No emojis.' : ''
+
   return `You are an award-winning writer with 15 years of experience.
 Write ONE ${platform} post for the pipeline "${slot.pipeline_name}".
 Date: ${date}.
@@ -72,8 +106,13 @@ Hard constraints:
 - Output ONLY the post text. No headings, no markdown, no quotes.
 - Make it engaging, curiosity-driven, and follower-growth oriented.
 - Avoid repeating common phrases; make it feel fresh for this date.
-- Keep it concise and platform-appropriate.
-- If the instructions say to start with specific words (e.g., "Good Morning"), do it.
+- Keep it platform-appropriate.
+${lengthRule}
+${mustStartRule}
+${endQRule}
+${ctaRule}
+${hashtagRule}
+${emojiRule}
 ${extraInstruction ? `- ${extraInstruction}` : ''}
 
 Return just the final post.`
@@ -82,6 +121,30 @@ Return just the final post.`
 const buildBatchPrompt = (slots: Slot[], platform: string, recentExamples: string[]) => {
   const first = slots[0]
   const desc = first.description?.trim() || `Write ${first.pipeline_name} posts.`
+
+  const rules = {
+    length: first.gen?.length || 'short',
+    minWords: first.gen?.min_words ?? null,
+    maxWords: first.gen?.max_words ?? null,
+    mustStart: (first.gen?.must_start_with || '').trim(),
+    mustEndQ: Boolean(first.gen?.must_end_question),
+    includeCta: first.gen?.include_cta !== false,
+    noHashtags: first.gen?.no_hashtags !== false,
+    noEmojis: first.gen?.no_emojis !== false
+  }
+
+  const lengthRule =
+    rules.length === 'long'
+      ? `- Length: long single post. Target ${rules.minWords || 120}-${rules.maxWords || 220} words.`
+      : rules.length === 'medium'
+        ? '- Length: medium. Target 45-110 words.'
+        : '- Length: short. 1-2 sentences.'
+
+  const mustStartRule = rules.mustStart ? `- Must start with: ${JSON.stringify(rules.mustStart)}.` : ''
+  const endQRule = rules.mustEndQ ? '- Must end with a question mark.' : ''
+  const ctaRule = rules.includeCta ? '- Include a clear CTA (no fluff).' : ''
+  const hashtagRule = rules.noHashtags ? '- No hashtags.' : ''
+  const emojiRule = rules.noEmojis ? '- No emojis.' : ''
   const scheduleBlock = slots
     .map((slot, i) => {
       const scheduledAt = slot.scheduled_at || `${stripTime(slot.date)}T09:00:00`
@@ -112,7 +175,13 @@ ${recentBlock}Hard constraints:
 - Avoid repeated phrases/openings and avoid similar sentence structure between items.
 - Do not reuse language from recent posts.
 - No duplicates or near-duplicates within this batch.
-- Keep content concise and platform-appropriate.
+- Keep it platform-appropriate.
+${lengthRule}
+${mustStartRule}
+${endQRule}
+${ctaRule}
+${hashtagRule}
+${emojiRule}
 
 Return only valid JSON.`
 }

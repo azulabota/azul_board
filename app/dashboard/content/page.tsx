@@ -37,6 +37,15 @@ type Pipeline = {
   post_time?: string | null
   post_time_start?: string | null
   post_time_end?: string | null
+
+  gen_length?: 'short' | 'medium' | 'long' | 'thread'
+  gen_min_words?: number | null
+  gen_max_words?: number | null
+  gen_must_start_with?: string | null
+  gen_must_end_question?: boolean
+  gen_include_cta?: boolean
+  gen_no_hashtags?: boolean
+  gen_no_emojis?: boolean
 }
 
 type GenerationJobState = {
@@ -115,7 +124,16 @@ export default function ContentCalendar() {
     description: '',
     color: '#64748b',
     days: [0, 1, 2, 3, 4, 5, 6],
-    post_time: '09:00'
+    post_time: '09:00',
+
+    gen_length: 'short' as 'short' | 'medium' | 'long' | 'thread',
+    gen_min_words: 0,
+    gen_max_words: 0,
+    gen_must_start_with: '',
+    gen_must_end_question: false,
+    gen_include_cta: true,
+    gen_no_hashtags: true,
+    gen_no_emojis: true
   })
   const [pendingDeletePipeline, setPendingDeletePipeline] = useState<Pipeline | null>(null)
   const [deleteMode, setDeleteMode] = useState<'reassign' | 'none'>('reassign')
@@ -199,7 +217,7 @@ export default function ContentCalendar() {
 
     const { data, error: fetchError } = await supabase
       .from('content_pipelines')
-      .select('id, user_id, key, name, description, color, days_of_week, is_enabled, timezone, post_time, post_time_start, post_time_end')
+      .select('id, user_id, key, name, description, color, days_of_week, is_enabled, timezone, post_time, post_time_start, post_time_end, gen_length, gen_min_words, gen_max_words, gen_must_start_with, gen_must_end_question, gen_include_cta, gen_no_hashtags, gen_no_emojis')
       .eq('user_id', uid)
       .order('created_at', { ascending: true })
 
@@ -232,7 +250,7 @@ export default function ContentCalendar() {
 
       const { data: seeded } = await supabase
         .from('content_pipelines')
-        .select('id, user_id, key, name, description, color, days_of_week, is_enabled, timezone, post_time, post_time_start, post_time_end')
+        .select('id, user_id, key, name, description, color, days_of_week, is_enabled, timezone, post_time, post_time_start, post_time_end, gen_length, gen_min_words, gen_max_words, gen_must_start_with, gen_must_end_question, gen_include_cta, gen_no_hashtags, gen_no_emojis')
         .eq('user_id', uid)
         .order('created_at', { ascending: true })
 
@@ -401,7 +419,11 @@ export default function ContentCalendar() {
       color: newPipeline.color,
       days_of_week: newPipeline.days,
       timezone: 'America/Denver',
-      post_time: newPipeline.post_time || null
+      post_time: newPipeline.post_time || null,
+      gen_length: 'short',
+      gen_no_hashtags: true,
+      gen_no_emojis: true,
+      gen_include_cta: true
     })
 
     if (insertError) {
@@ -423,7 +445,16 @@ export default function ContentCalendar() {
       description: p.description || '',
       color: p.color,
       days: p.days_of_week || [0, 1, 2, 3, 4, 5, 6],
-      post_time: (p.post_time as string | undefined) || '09:00'
+      post_time: (p.post_time as string | undefined) || '09:00',
+
+      gen_length: (p.gen_length as any) || 'short',
+      gen_min_words: Number(p.gen_min_words || 0),
+      gen_max_words: Number(p.gen_max_words || 0),
+      gen_must_start_with: (p.gen_must_start_with as any) || '',
+      gen_must_end_question: Boolean(p.gen_must_end_question),
+      gen_include_cta: p.gen_include_cta !== false,
+      gen_no_hashtags: p.gen_no_hashtags !== false,
+      gen_no_emojis: p.gen_no_emojis !== false
     })
 
     // Bring the edit panel into view (it renders below the list)
@@ -452,7 +483,16 @@ export default function ContentCalendar() {
         description: editPipeline.description.trim() || null,
         color: editPipeline.color,
         days_of_week: editPipeline.days,
-        post_time: (editPipeline as any).post_time || null
+        post_time: (editPipeline as any).post_time || null,
+
+        gen_length: (editPipeline as any).gen_length,
+        gen_min_words: (editPipeline as any).gen_min_words || null,
+        gen_max_words: (editPipeline as any).gen_max_words || null,
+        gen_must_start_with: (editPipeline as any).gen_must_start_with?.trim() || null,
+        gen_must_end_question: Boolean((editPipeline as any).gen_must_end_question),
+        gen_include_cta: Boolean((editPipeline as any).gen_include_cta),
+        gen_no_hashtags: Boolean((editPipeline as any).gen_no_hashtags),
+        gen_no_emojis: Boolean((editPipeline as any).gen_no_emojis)
       })
       .eq('id', editingPipelineId)
       .eq('user_id', userId)
@@ -919,6 +959,107 @@ export default function ContentCalendar() {
                           </label>
                         ))}
                       </div>
+                    </div>
+                  </div>
+
+                  <div style={{ ...ui.panelAlt, padding: '0.65rem', marginBottom: '0.65rem' }}>
+                    <div style={{ fontWeight: 800, marginBottom: '0.35rem' }}>Generation settings</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                      <label style={{ display: 'grid', gap: '0.25rem', fontSize: '0.85rem', color: 'var(--muted)' }}>
+                        Length
+                        <select
+                          value={(editPipeline as any).gen_length}
+                          onChange={(e) => {
+                            const v = e.target.value as 'short' | 'medium' | 'long' | 'thread'
+                            const defaults =
+                              v === 'long'
+                                ? { gen_min_words: 120, gen_max_words: 220 }
+                                : v === 'medium'
+                                  ? { gen_min_words: 45, gen_max_words: 110 }
+                                  : { gen_min_words: 0, gen_max_words: 0 }
+                            setEditPipeline((p) => ({ ...p, gen_length: v, ...defaults }))
+                          }}
+                          style={{ ...ui.input, padding: '0.45rem 0.5rem' }}
+                          disabled={pipelineBusy}
+                        >
+                          <option value="short">Short</option>
+                          <option value="medium">Medium</option>
+                          <option value="long">Long</option>
+                        </select>
+                      </label>
+
+                      <label style={{ display: 'grid', gap: '0.25rem', fontSize: '0.85rem', color: 'var(--muted)' }}>
+                        Must start with (optional)
+                        <input
+                          value={(editPipeline as any).gen_must_start_with}
+                          onChange={(e) => setEditPipeline((p) => ({ ...p, gen_must_start_with: e.target.value }))}
+                          style={{ ...ui.input, padding: '0.45rem 0.5rem' }}
+                          placeholder='e.g. Good Morning'
+                          disabled={pipelineBusy}
+                        />
+                      </label>
+
+                      <label style={{ display: 'grid', gap: '0.25rem', fontSize: '0.85rem', color: 'var(--muted)' }}>
+                        Min words (Long)
+                        <input
+                          type="number"
+                          value={(editPipeline as any).gen_min_words}
+                          onChange={(e) => setEditPipeline((p) => ({ ...p, gen_min_words: Number(e.target.value) }))}
+                          style={{ ...ui.input, padding: '0.45rem 0.5rem' }}
+                          disabled={pipelineBusy || (editPipeline as any).gen_length !== 'long'}
+                        />
+                      </label>
+
+                      <label style={{ display: 'grid', gap: '0.25rem', fontSize: '0.85rem', color: 'var(--muted)' }}>
+                        Max words (Long)
+                        <input
+                          type="number"
+                          value={(editPipeline as any).gen_max_words}
+                          onChange={(e) => setEditPipeline((p) => ({ ...p, gen_max_words: Number(e.target.value) }))}
+                          style={{ ...ui.input, padding: '0.45rem 0.5rem' }}
+                          disabled={pipelineBusy || (editPipeline as any).gen_length !== 'long'}
+                        />
+                      </label>
+
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: 'var(--muted)' }}>
+                        <input
+                          type="checkbox"
+                          checked={Boolean((editPipeline as any).gen_no_hashtags)}
+                          onChange={(e) => setEditPipeline((p) => ({ ...p, gen_no_hashtags: e.target.checked }))}
+                          disabled={pipelineBusy}
+                        />
+                        No hashtags
+                      </label>
+
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: 'var(--muted)' }}>
+                        <input
+                          type="checkbox"
+                          checked={Boolean((editPipeline as any).gen_no_emojis)}
+                          onChange={(e) => setEditPipeline((p) => ({ ...p, gen_no_emojis: e.target.checked }))}
+                          disabled={pipelineBusy}
+                        />
+                        No emojis
+                      </label>
+
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: 'var(--muted)' }}>
+                        <input
+                          type="checkbox"
+                          checked={Boolean((editPipeline as any).gen_include_cta)}
+                          onChange={(e) => setEditPipeline((p) => ({ ...p, gen_include_cta: e.target.checked }))}
+                          disabled={pipelineBusy}
+                        />
+                        Include CTA
+                      </label>
+
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: 'var(--muted)' }}>
+                        <input
+                          type="checkbox"
+                          checked={Boolean((editPipeline as any).gen_must_end_question)}
+                          onChange={(e) => setEditPipeline((p) => ({ ...p, gen_must_end_question: e.target.checked }))}
+                          disabled={pipelineBusy}
+                        />
+                        End with a question
+                      </label>
                     </div>
                   </div>
 
