@@ -146,7 +146,7 @@ export default function CodingCockpitPage() {
       return
     }
 
-    const rows = (data || []) as Thread[]
+    const rows = ((data || []) as Array<Thread | null>).filter(Boolean) as Thread[]
     setThreads(rows)
 
     if (!activeThreadId && rows.length) {
@@ -458,9 +458,9 @@ export default function CodingCockpitPage() {
             {threads.length === 0 ? (
               <div style={{ color: 'var(--muted)', fontSize: '0.9rem' }}>No threads yet.</div>
             ) : (
-              threads.map((t) => (
+              threads.filter(Boolean).map((t) => (
                 <button
-                  key={t.id}
+                  key={(t as any).id}
                   onClick={() => void handleSelectThread(t.id)}
                   style={{
                     width: '100%',
@@ -474,8 +474,8 @@ export default function CodingCockpitPage() {
                     cursor: 'pointer'
                   }}
                 >
-                  <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{t.title || `Thread ${t.id}`}</div>
-                  <div style={{ color: 'var(--muted)', fontSize: '0.75rem' }}>{new Date(t.updated_at).toLocaleString()}</div>
+                  <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{(t as any).title || `Thread ${(t as any).id}`}</div>
+                  <div style={{ color: 'var(--muted)', fontSize: '0.75rem' }}>{new Date((t as any).updated_at).toLocaleString()}</div>
                 </button>
               ))
             )}
