@@ -79,7 +79,7 @@ export default function LoginPage() {
           }}
         >
           <div style={{ maxWidth: 520 }}>
-            <div style={{ fontSize: '0.85rem', color: 'var(--muted)', letterSpacing: 0.6 }}>SAPIEN ELEVEN</div>
+            <div style={{ fontSize: '0.85rem', color: 'var(--muted)', letterSpacing: 0.6 }}>AZULBOARD</div>
             <h1 style={{ margin: '0.35rem 0 0.5rem 0', fontSize: '2rem', lineHeight: 1.1 }}>{headline}</h1>
             <p style={{ marginTop: 0, marginBottom: '1rem', color: 'var(--muted)' }}>{subhead}</p>
 
@@ -201,7 +201,7 @@ export default function LoginPage() {
           pointer-events: none;
           opacity: 0.85;
           background-image:
-            radial-gradient(900px 520px at 12% -8%, rgba(228, 58, 75, 0.18), transparent 60%),
+            radial-gradient(900px 520px at 12% -8%, rgba(59, 130, 246, 0.22), transparent 60%),
             radial-gradient(900px 520px at 92% 0%, rgba(34, 84, 170, 0.18), transparent 55%),
             linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
             linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
