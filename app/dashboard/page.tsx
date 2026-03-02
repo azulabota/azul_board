@@ -345,6 +345,18 @@ export default function Dashboard() {
             {sidebarCollapsed ? 'ADM' : 'Admin'}
           </button>
         )}
+        {canUseScheduler && (
+          <button
+            onClick={() => router.push('/dashboard/content')}
+            style={{
+              ...btnPrimary,
+              border: '1px solid #7c3aed',
+              background: '#5b21b6'
+            }}
+          >
+            {sidebarCollapsed ? 'CAL' : 'Calendar'}
+          </button>
+        )}
         <button onClick={() => router.push('/settings')} style={btnSecondary}>
           {sidebarCollapsed ? 'SET' : 'Settings'}
         </button>
@@ -373,7 +385,6 @@ export default function Dashboard() {
           >
             Dev/Coder
           </button>
-          <button onClick={() => router.push('/dashboard/content')} style={tabIdle}>Calendar</button>
         </div>
 
         {topTab === 'progress' && (
