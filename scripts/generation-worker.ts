@@ -1,4 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 
 type Slot = {
   date: string
@@ -31,6 +33,7 @@ type GenerationJobRow = {
 const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 const modelProvider = (process.env.MODEL_PROVIDER || 'stub').toLowerCase()
+const codexModel = process.env.CODEX_MODEL || ''
 const openAiApiKey = process.env.OPENAI_API_KEY || ''
 const pollIntervalMs = Math.max(500, Number(process.env.GENERATION_WORKER_POLL_MS || 2000))
 
@@ -46,17 +49,61 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 const stripTime = (isoOrDate: string) => isoOrDate.slice(0, 10)
 
+const execFileAsync = promisify(execFile)
+
+const buildPrompt = (slot: Slot, platform: string) => {
+  const date = stripTime(slot.date)
+  const desc = slot.description?.trim() || `Write a ${slot.pipeline_name} post.`
+
+  return `You are an award-winning writer with 15 years of experience.
+Write ONE ${platform} post for the pipeline "${slot.pipeline_name}".
+Date: ${date}.
+
+Pipeline instructions (follow strictly):
+${desc}
+
+Hard constraints:
+- Output ONLY the post text. No headings, no markdown, no quotes.
+- Make it engaging, curiosity-driven, and follower-growth oriented.
+- Avoid repeating common phrases; make it feel fresh for this date.
+- Keep it concise and platform-appropriate.
+- If the instructions say to start with specific words (e.g., "Good Morning"), do it.
+
+Return just the final post.`
+}
+
+const generateWithCodex = async (prompt: string) => {
+  // Uses the local Codex CLI session (often OAuth-backed). No API key needed here.
+  // `codex` outputs plain text. We pass -q for quiet where supported.
+  const args = ['exec', '--full-auto', prompt]
+  if (codexModel) {
+    args.unshift('--model', codexModel)
+  }
+
+  const { stdout } = await execFileAsync('codex', args, {
+    maxBuffer: 10 * 1024 * 1024
+  })
+
+  return String(stdout || '').trim()
+}
+
 const generateDeterministicContent = (slot: Slot, platform: string) => {
   const date = stripTime(slot.date)
   const desc = slot.description?.trim() || `Focus on ${slot.pipeline_name}.`
-  return [
-    `${slot.pipeline_name} (${date})`,
-    `Platform: ${platform}`,
-    '',
-    `Today: ${desc}`,
-    `Angle: ${slot.pipeline_name} insight for ${date}.`,
-    'CTA: Share one practical takeaway in the replies.'
-  ].join('\n')
+  return `Good Morning — ${slot.pipeline_name} (${date}). ${desc}`
+}
+
+const generateContent = async (slot: Slot, platform: string) => {
+  const prompt = buildPrompt(slot, platform)
+
+  if (modelProvider === 'codex') {
+    const out = await generateWithCodex(prompt)
+    if (!out) throw new Error('Codex returned empty output')
+    return out
+  }
+
+  // TODO: add openai provider support here if needed.
+  return generateDeterministicContent(slot, platform)
 }
 
 const claimNextJob = async (): Promise<GenerationJobRow | null> => {
@@ -115,17 +162,21 @@ const processJob = async (job: GenerationJobRow) => {
   const existingSet = new Set((existingItems || []).map((r: any) => `${r.date}::${r.pipeline_key || r.type}`))
   const newSlots = slots.filter((slot) => !existingSet.has(`${stripTime(slot.date)}::${slot.pipeline_key}`))
 
-  const rowsToInsert = newSlots.map((slot) => ({
-    user_id: job.user_id,
-    date: stripTime(slot.date),
-    scheduled_at: slot.scheduled_at || null,
-    pipeline_key: slot.pipeline_key,
-    type: slot.pipeline_key,
-    title: `${slot.pipeline_name} post`,
-    content: generateDeterministicContent(slot, job.platform || 'X'),
-    platform: job.platform || 'X',
-    status: 'draft'
-  }))
+  const rowsToInsert = [] as any[]
+  for (const slot of newSlots) {
+    const content = await generateContent(slot, job.platform || 'X')
+    rowsToInsert.push({
+      user_id: job.user_id,
+      date: stripTime(slot.date),
+      scheduled_at: slot.scheduled_at || null,
+      pipeline_key: slot.pipeline_key,
+      type: slot.pipeline_key,
+      title: `${slot.pipeline_name} post`,
+      content,
+      platform: job.platform || 'X',
+      status: 'draft'
+    })
+  }
 
   if (rowsToInsert.length > 0) {
     const { error: insertError } = await supabase.from('content_items').insert(rowsToInsert)
@@ -165,6 +216,9 @@ const main = async () => {
   console.log(`[generation-worker] Starting worker (provider=${modelProvider}, poll=${pollIntervalMs}ms)`)
   if (modelProvider === 'openai' && !openAiApiKey) {
     console.warn('[generation-worker] MODEL_PROVIDER=openai but OPENAI_API_KEY is missing; using placeholder generator.')
+  }
+  if (modelProvider === 'codex') {
+    console.log('[generation-worker] Using local codex CLI for generation')
   }
 
   // eslint-disable-next-line no-constant-condition
