@@ -342,6 +342,9 @@ export default function Dashboard() {
             Your account does not have access to the development dashboard yet.
           </p>
           <div style={{ display:'flex', gap:'0.5rem', flexWrap:'wrap' }}>
+            <button onClick={() => router.push('/settings')} style={{ padding:'8px 12px', background:'#374151', border:'none', borderRadius:'6px', color:'#fff', cursor:'pointer' }}>
+              Settings
+            </button>
             {canUseScheduler && profileStatus === 'active' && (
               <button onClick={() => router.push('/dashboard/content')} style={{ padding:'8px 12px', background:'#6366f1', border:'none', borderRadius:'6px', color:'#fff', cursor:'pointer' }}>
                 Open Content Calendar
@@ -401,6 +404,9 @@ export default function Dashboard() {
             {sidebarCollapsed ? '🛡️' : 'Admin Panel'}
           </button>
         )}
+        <button onClick={() => router.push('/settings')} style={{...s.logoutBtn, background:'#374151', marginBottom:'0.5rem'}}>
+          {sidebarCollapsed ? 'SET' : 'Settings'}
+        </button>
         <button onClick={handleLogout} style={s.logoutBtn}>{sidebarCollapsed ? '⬜' : 'Logout'}</button>
       </div>
 

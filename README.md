@@ -24,7 +24,8 @@ A Next.js 14 dashboard powered by Supabase.
 2. Open SQL Editor.
 3. Run `supabase-schema.sql`.
 4. Run migration: `supabase/migrations/001_rbac_calendar.sql`.
-5. In Settings -> API, copy:
+5. Run migration: `supabase/migrations/002_api_keys_and_dev_policies.sql`.
+6. In Settings -> API, copy:
 - Project URL
 - `anon` public key
 - `service_role` secret key
@@ -66,6 +67,20 @@ After that, log in and visit `/admin`.
 - A trigger auto-creates `profiles`, `user_permissions`, and default `user` role.
 - Admins approve/disable users and manage permissions/roles from `/admin`.
 - Pending users are redirected to `/pending`.
+
+## OpenClaw API keys
+
+- Users can manage keys at `/settings`.
+- Keys are returned in plaintext only once at creation time and are never stored in plaintext.
+- Bot requests must send the key as a bearer token:
+
+```bash
+Authorization: Bearer <openclaw_api_key>
+```
+
+- Endpoints:
+- `POST /api/openclaw/content-items` (requires active user + `can_use_scheduler`)
+- `POST /api/openclaw/revisions` (requires active user + `can_use_dev_dashboard`)
 
 ## Build check
 
