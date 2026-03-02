@@ -91,47 +91,64 @@ export default function CodingCockpitPage() {
     setLoading(true)
     setError('')
 
-    const {
-      data: { user }
-    } = await supabase.auth.getUser()
+    try {
+      const {
+        data: { user },
+        error: userErr
+      } = await supabase.auth.getUser()
 
-    if (!user) {
-      router.push('/')
-      return
-    }
+      if (userErr) {
+        setError(userErr.message)
+        return
+      }
 
-    const [profileRes, permRes] = await Promise.all([
-      supabase.from('profiles').select('status, email').eq('id', user.id).maybeSingle(),
-      supabase.from('user_permissions').select('can_use_dev_dashboard').eq('user_id', user.id).maybeSingle()
-    ])
+      if (!user) {
+        router.push('/')
+        return
+      }
 
-    if (profileRes.error || permRes.error || !profileRes.data) {
-      setError('Unable to load account state.')
+      const [profileRes, permRes] = await Promise.all([
+        supabase.from('profiles').select('status, email').eq('id', user.id).maybeSingle(),
+        supabase.from('user_permissions').select('can_use_dev_dashboard').eq('user_id', user.id).maybeSingle()
+      ])
+
+      if (profileRes.error) {
+        setError(`Profile load failed: ${profileRes.error.message}`)
+        return
+      }
+      if (permRes.error) {
+        setError(`Permissions load failed: ${permRes.error.message}`)
+        return
+      }
+      if (!profileRes.data) {
+        setError('No profile found for this user.')
+        return
+      }
+
+      const acct: AccountState = {
+        id: user.id,
+        email: (profileRes.data as any).email || user.email || '',
+        status: (profileRes.data as any).status,
+        canUseDevDashboard: Boolean(permRes.data?.can_use_dev_dashboard)
+      }
+
+      setAccount(acct)
+
+      if (acct.status === 'pending') {
+        router.push('/pending')
+        return
+      }
+
+      if (acct.status !== 'active' || !acct.canUseDevDashboard) {
+        return
+      }
+
+      await Promise.all([fetchThreads(), fetchConnection()])
+    } catch (e: any) {
+      setError(e?.message || 'Coding Cockpit failed to initialize')
+    } finally {
       setLoading(false)
-      return
     }
-
-    const acct: AccountState = {
-      id: user.id,
-      email: profileRes.data.email || user.email || '',
-      status: profileRes.data.status,
-      canUseDevDashboard: Boolean(permRes.data?.can_use_dev_dashboard)
-    }
-
-    setAccount(acct)
-
-    if (acct.status === 'pending') {
-      router.push('/pending')
-      return
-    }
-
-    if (acct.status !== 'active' || !acct.canUseDevDashboard) {
-      setLoading(false)
-      return
-    }
-
-    await Promise.all([fetchThreads(), fetchConnection()])
-    setLoading(false)
   }
 
   const fetchThreads = async () => {
@@ -423,7 +440,22 @@ export default function CodingCockpitPage() {
   const activeThread = useMemo(() => threads.find((t) => t.id === activeThreadId) || null, [threads, activeThreadId])
 
   if (loading) {
-    return <div style={{ ...ui.page, display: 'grid', placeItems: 'center' }}>Loading Coding Cockpit...</div>
+    return (
+      <div style={{ ...ui.page, display: 'grid', placeItems: 'center', padding: '1.5rem' }}>
+        <div style={{ ...ui.panel, padding: '1rem', maxWidth: 640 }}>
+          <div style={{ fontWeight: 900, marginBottom: '0.25rem' }}>Loading Coding Cockpit…</div>
+          <div style={{ color: 'var(--muted)' }}>
+            If this takes more than ~10 seconds, refresh the page. If it still hangs, we’ll display the underlying error here.
+          </div>
+          {error && (
+            <div style={{ marginTop: '0.75rem', background: '#4f1d28', border: '1px solid var(--danger-border)', borderRadius: 10, padding: '0.75rem' }}>
+              <div style={{ fontWeight: 800, marginBottom: '0.25rem' }}>Error</div>
+              <div style={{ whiteSpace: 'pre-wrap' }}>{error}</div>
+            </div>
+          )}
+        </div>
+      </div>
+    )
   }
 
   if (!account || account.status !== 'active' || !account.canUseDevDashboard) {
