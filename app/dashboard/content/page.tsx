@@ -582,46 +582,6 @@ export default function ContentCalendar() {
         <div style={{ ...ui.panel, padding: '1rem', marginBottom: '1rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
             <h2 style={{ marginTop: 0, fontSize: '1.1rem' }}>Pipelines</h2>
-            <button
-              onClick={async () => {
-                setPipelineError('')
-                setPipelineBusy(true)
-                const {
-                  data: { session }
-                } = await supabase.auth.getSession()
-
-                const token = session?.access_token
-                if (!token) {
-                  setPipelineError('Session expired. Please sign in again.')
-                  setPipelineBusy(false)
-                  return
-                }
-
-                const res = await fetch('/api/calendar/generate-week', {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`
-                  },
-                  body: JSON.stringify({ days: 7, platform: 'X' })
-                })
-
-                const payload = await res.json().catch(() => null)
-                if (!res.ok) {
-                  setPipelineError(payload?.error || 'Failed to generate')
-                  setPipelineBusy(false)
-                  return
-                }
-
-                await loadItems(userId)
-                setPipelineBusy(false)
-                alert(`Generated ${payload?.inserted || 0} drafts`) 
-              }}
-              style={withDisabled(ui.buttonPrimary, pipelineBusy)}
-              disabled={pipelineBusy}
-            >
-              {pipelineBusy ? 'Generating…' : 'Generate 7 days (ON pipelines)'}
-            </button>
           </div>
           <p style={{ marginTop: 0, color: 'var(--muted)', fontSize: '0.9rem' }}>
             Pipelines control your posting categories (name, color, and which days you intend to post them).
@@ -737,8 +697,27 @@ export default function ContentCalendar() {
                             />
                             {p.is_enabled ? 'On' : 'Off'}
                           </label>
-                          <button onClick={() => startEditPipeline(p)} style={ui.buttonSecondary} disabled={pipelineBusy}>
+                          <button
+                            onClick={() => {
+                              startEditPipeline(p)
+                              // Small UX: scroll + generate button lives inside edit panel
+                            }}
+                            style={ui.buttonSecondary}
+                            disabled={pipelineBusy}
+                          >
                             Edit
+                          </button>
+                          <button
+                            onClick={async () => {
+                              // Open edit panel and scroll into view, then user can hit Generate.
+                              // (We keep generation behind the explicit Generate button for safety.)
+                              startEditPipeline(p)
+                            }}
+                            style={ui.buttonGhost}
+                            disabled={pipelineBusy}
+                            title="Open this pipeline and generate next 7 days"
+                          >
+                            Gen
                           </button>
                           <button onClick={() => deletePipeline(p)} style={ui.buttonDanger} disabled={pipelineBusy}>
                             Delete
