@@ -127,8 +127,8 @@ export default function ContentCalendar() {
     post_time: '09:00',
 
     gen_length: 'short' as 'short' | 'medium' | 'long' | 'thread',
-    gen_min_words: 0,
-    gen_max_words: 0,
+    gen_min_words: null as number | null,
+    gen_max_words: null as number | null,
     gen_must_start_with: '',
     gen_must_end_question: false,
     gen_include_cta: true,
@@ -448,8 +448,8 @@ export default function ContentCalendar() {
       post_time: (p.post_time as string | undefined) || '09:00',
 
       gen_length: (p.gen_length as any) || 'short',
-      gen_min_words: Number(p.gen_min_words || 0),
-      gen_max_words: Number(p.gen_max_words || 0),
+      gen_min_words: p.gen_min_words == null ? null : Number(p.gen_min_words),
+      gen_max_words: p.gen_max_words == null ? null : Number(p.gen_max_words),
       gen_must_start_with: (p.gen_must_start_with as any) || '',
       gen_must_end_question: Boolean(p.gen_must_end_question),
       gen_include_cta: p.gen_include_cta !== false,
@@ -486,8 +486,8 @@ export default function ContentCalendar() {
         post_time: (editPipeline as any).post_time || null,
 
         gen_length: (editPipeline as any).gen_length,
-        gen_min_words: (editPipeline as any).gen_min_words || null,
-        gen_max_words: (editPipeline as any).gen_max_words || null,
+        gen_min_words: (editPipeline as any).gen_min_words == null ? null : Number((editPipeline as any).gen_min_words),
+        gen_max_words: (editPipeline as any).gen_max_words == null ? null : Number((editPipeline as any).gen_max_words),
         gen_must_start_with: (editPipeline as any).gen_must_start_with?.trim() || null,
         gen_must_end_question: Boolean((editPipeline as any).gen_must_end_question),
         gen_include_cta: Boolean((editPipeline as any).gen_include_cta),
@@ -976,7 +976,7 @@ export default function ContentCalendar() {
                                 ? { gen_min_words: 120, gen_max_words: 220 }
                                 : v === 'medium'
                                   ? { gen_min_words: 45, gen_max_words: 110 }
-                                  : { gen_min_words: 0, gen_max_words: 0 }
+                                  : { gen_min_words: null, gen_max_words: null }
                             setEditPipeline((p) => ({ ...p, gen_length: v, ...defaults }))
                           }}
                           style={{ ...ui.input, padding: '0.45rem 0.5rem' }}
@@ -999,27 +999,36 @@ export default function ContentCalendar() {
                         />
                       </label>
 
-                      <label style={{ display: 'grid', gap: '0.25rem', fontSize: '0.85rem', color: 'var(--muted)' }}>
-                        Min words (Long)
-                        <input
-                          type="number"
-                          value={(editPipeline as any).gen_min_words}
-                          onChange={(e) => setEditPipeline((p) => ({ ...p, gen_min_words: Number(e.target.value) }))}
-                          style={{ ...ui.input, padding: '0.45rem 0.5rem' }}
-                          disabled={pipelineBusy || (editPipeline as any).gen_length !== 'long'}
-                        />
-                      </label>
+                      {(editPipeline as any).gen_length === 'long' ? (
+                        <>
+                          <label style={{ display: 'grid', gap: '0.25rem', fontSize: '0.85rem', color: 'var(--muted)' }}>
+                            Min words (Long)
+                            <input
+                              type="number"
+                              value={(editPipeline as any).gen_min_words}
+                              onChange={(e) => setEditPipeline((p) => ({ ...p, gen_min_words: Number(e.target.value) }))}
+                              style={{ ...ui.input, padding: '0.45rem 0.5rem' }}
+                              disabled={pipelineBusy}
+                            />
+                          </label>
 
-                      <label style={{ display: 'grid', gap: '0.25rem', fontSize: '0.85rem', color: 'var(--muted)' }}>
-                        Max words (Long)
-                        <input
-                          type="number"
-                          value={(editPipeline as any).gen_max_words}
-                          onChange={(e) => setEditPipeline((p) => ({ ...p, gen_max_words: Number(e.target.value) }))}
-                          style={{ ...ui.input, padding: '0.45rem 0.5rem' }}
-                          disabled={pipelineBusy || (editPipeline as any).gen_length !== 'long'}
-                        />
-                      </label>
+                          <label style={{ display: 'grid', gap: '0.25rem', fontSize: '0.85rem', color: 'var(--muted)' }}>
+                            Max words (Long)
+                            <input
+                              type="number"
+                              value={(editPipeline as any).gen_max_words}
+                              onChange={(e) => setEditPipeline((p) => ({ ...p, gen_max_words: Number(e.target.value) }))}
+                              style={{ ...ui.input, padding: '0.45rem 0.5rem' }}
+                              disabled={pipelineBusy}
+                            />
+                          </label>
+                        </>
+                      ) : (
+                        <div style={{ gridColumn: '1 / -1', color: 'var(--muted)', fontSize: '0.85rem' }}>
+                          {((editPipeline as any).gen_length === 'short') && 'Short = 1–2 sentences.'}
+                          {((editPipeline as any).gen_length === 'medium') && 'Medium = ~45–110 words.'}
+                        </div>
+                      )}
 
                       <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: 'var(--muted)' }}>
                         <input
