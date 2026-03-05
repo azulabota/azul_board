@@ -5,6 +5,12 @@ import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '../../../../lib/supabase'
 import { ui, withDisabled } from '../../../ui/styles'
 
+type ProjectRow = {
+  id: number
+  title: string
+  updated_at: string
+}
+
 type Project = {
   id: number
   title: string
@@ -16,7 +22,6 @@ type Project = {
 type Iteration = {
   id: number
   created_at: string
-  title: string | null
   instruction: string | null
   status: 'draft' | 'queued' | 'running' | 'done' | 'failed'
   assignee_user_id: string | null
@@ -32,6 +37,9 @@ export default function CockpitV2ProjectPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [working, setWorking] = useState(false)
+
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [projects, setProjects] = useState<ProjectRow[]>([])
 
   const [project, setProject] = useState<Project | null>(null)
   const [iterations, setIterations] = useState<Iteration[]>([])
@@ -70,8 +78,22 @@ export default function CockpitV2ProjectPage() {
       return
     }
 
-    await Promise.all([loadProject(), loadIterations(), loadUsers()])
+    await Promise.all([loadProjects(), loadProject(), loadIterations(), loadUsers()])
     setLoading(false)
+  }
+
+  const loadProjects = async () => {
+    const { data, error: loadErr } = await supabase
+      .from('cockpit_projects')
+      .select('id, title, updated_at')
+      .order('updated_at', { ascending: false })
+
+    if (loadErr) {
+      setError(loadErr.message)
+      return
+    }
+
+    setProjects((data || []) as ProjectRow[])
   }
 
   const loadProject = async () => {
@@ -98,7 +120,7 @@ export default function CockpitV2ProjectPage() {
   const loadIterations = async () => {
     const { data, error: loadErr } = await supabase
       .from('cockpit_project_iterations')
-      .select('id, created_at, title, instruction, status, assignee_user_id')
+      .select('id, created_at, instruction, status, assignee_user_id')
       .eq('project_id', projectId)
       .order('created_at', { ascending: false })
 
@@ -111,9 +133,6 @@ export default function CockpitV2ProjectPage() {
   }
 
   const loadUsers = async () => {
-    // This is safe because profiles_select_own_or_admin blocks other users.
-    // For assignee selection, we should use an admin API later.
-    // MVP: we use an admin-only view if the current user is admin; otherwise show only self.
     const {
       data: { user }
     } = await supabase.auth.getUser()
@@ -131,7 +150,6 @@ export default function CockpitV2ProjectPage() {
     const { data, error: err } = await supabase.from('profiles').select('id, email, first_name').eq('status', 'active')
 
     if (err) {
-      // fall back to self
       setUsers([{ id: user.id, email: user.email ?? null, first_name: (user.user_metadata as any)?.first_name ?? null }])
       setAssignee(user.id)
       return
@@ -141,10 +159,10 @@ export default function CockpitV2ProjectPage() {
     if (!assignee) setAssignee(user.id)
   }
 
-  const canCreateIteration = useMemo(() => instruction.trim().length > 0, [instruction])
+  const canBuildFromThis = useMemo(() => instruction.trim().length > 0, [instruction])
 
   const createIteration = async () => {
-    if (!canCreateIteration) return
+    if (!canBuildFromThis) return
 
     setWorking(true)
     setError('')
@@ -183,103 +201,161 @@ export default function CockpitV2ProjectPage() {
   }
 
   if (loading) {
-    return <div style={{ ...ui.page, display: 'grid', placeItems: 'center' }}>Loading project...</div>
+    return <div style={{ ...ui.page, display: 'grid', placeItems: 'center' }}>Loading Cockpit v2…</div>
   }
 
   return (
-    <div style={{ ...ui.page, padding: '1.5rem' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'center', marginBottom: '1rem' }}>
-        <div>
-          <h1 style={{ margin: 0 }}>{project?.title || 'Project'}</h1>
-          {project?.description ? <div style={{ color: 'var(--muted)', marginTop: '0.25rem' }}>{project.description}</div> : null}
-        </div>
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <button onClick={() => router.push('/dashboard/cockpit-v2')} style={ui.buttonSecondary}>Projects</button>
-          <button onClick={() => router.push('/dashboard')} style={ui.buttonSecondary}>Dashboard</button>
-        </div>
-      </div>
-
-      {error && (
-        <div style={{ marginBottom: '1rem', background: '#4f1d28', border: '1px solid var(--danger-border)', borderRadius: '8px', padding: '0.75rem' }}>
-          {error}
-        </div>
-      )}
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-        <section style={{ ...ui.panel, padding: '1rem' }}>
-          <h2 style={{ marginTop: 0 }}>New iteration</h2>
-
-          <div style={{ display: 'grid', gap: '0.75rem' }}>
+    <div style={{ ...ui.page, padding: 0, display: 'flex', height: '100vh' }}>
+      {/* Projects sidebar (collapsible) */}
+      <aside
+        style={{
+          width: sidebarCollapsed ? 64 : 300,
+          borderRight: '1px solid var(--border)',
+          background: 'var(--surface)',
+          padding: '0.9rem',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '0.75rem'
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
+          {!sidebarCollapsed && (
             <div>
-              <div style={{ color: 'var(--muted)', fontSize: '0.85rem', marginBottom: '0.25rem' }}>Assignee</div>
-              <select value={assignee} onChange={(e) => setAssignee(e.target.value)} style={ui.input}>
-                {users.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.first_name || u.email || u.id}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <div style={{ color: 'var(--muted)', fontSize: '0.85rem', marginBottom: '0.25rem' }}>What to build / fix</div>
-              <textarea
-                value={instruction}
-                onChange={(e) => setInstruction(e.target.value)}
-                placeholder="Describe what to build/fix (this becomes the generation prompt)"
-                style={{ ...ui.input, minHeight: 110, resize: 'vertical' }}
-              />
-            </div>
-
-            <div>
-              <div style={{ color: 'var(--muted)', fontSize: '0.85rem', marginBottom: '0.25rem' }}>Collab notes</div>
-              <textarea
-                value={collabNotes}
-                onChange={(e) => setCollabNotes(e.target.value)}
-                placeholder="Notes for dev collaboration / review"
-                style={{ ...ui.input, minHeight: 90, resize: 'vertical' }}
-              />
-            </div>
-
-            <div>
-              <button
-                disabled={working || !canCreateIteration}
-                onClick={() => void createIteration()}
-                style={withDisabled(ui.buttonInfo, working || !canCreateIteration)}
-              >
-                Create iteration
-              </button>
-            </div>
-          </div>
-        </section>
-
-        <section style={{ ...ui.panel, padding: '1rem' }}>
-          <h2 style={{ marginTop: 0 }}>Iterations</h2>
-          {iterations.length === 0 ? (
-            <p style={{ color: 'var(--muted)' }}>No iterations yet.</p>
-          ) : (
-            <div style={{ display: 'grid', gap: '0.75rem' }}>
-              {iterations.map((it) => (
-                <div key={it.id} style={{ ...ui.panelAlt, padding: '0.75rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem' }}>
-                    <div style={{ fontWeight: 700 }}>Iteration #{it.id}</div>
-                    <div style={{ color: 'var(--muted)' }}>{it.status}</div>
-                  </div>
-                  {it.instruction ? <div style={{ marginTop: '0.4rem', whiteSpace: 'pre-wrap' }}>{it.instruction}</div> : null}
-                  <div style={{ marginTop: '0.4rem', color: 'var(--muted)', fontSize: '0.85rem' }}>{new Date(it.created_at).toLocaleString()}</div>
-                </div>
-              ))}
+              <div style={{ fontWeight: 900 }}>Projects</div>
+              <div style={{ color: 'var(--muted)', fontSize: '0.8rem' }}>Private by default</div>
             </div>
           )}
-        </section>
-      </div>
+          <button onClick={() => setSidebarCollapsed((v) => !v)} style={ui.buttonGhost}>
+            {sidebarCollapsed ? '→' : '←'}
+          </button>
+        </div>
 
-      <section style={{ ...ui.panel, padding: '1rem', marginTop: '1rem' }}>
-        <h2 style={{ marginTop: 0 }}>Workspace (coming next)</h2>
-        <p style={{ color: 'var(--muted)', marginBottom: 0 }}>
-          Next up: 3-panel workspace (Output | File viewer + highlight | Context inputs) + repo allowlist + PR creation.
-        </p>
-      </section>
+        {!sidebarCollapsed && (
+          <div style={{ display: 'grid', gap: '0.5rem' }}>
+            <button onClick={() => router.push('/dashboard/cockpit-v2')} style={ui.buttonSecondary}>+ New / Select</button>
+            {projects.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => router.push(`/dashboard/cockpit-v2/${p.id}`)}
+                style={{
+                  textAlign: 'left',
+                  padding: '0.65rem 0.7rem',
+                  borderRadius: 10,
+                  border: `1px solid ${p.id === projectId ? 'var(--accent)' : 'var(--border)'}`,
+                  background: p.id === projectId ? 'var(--surface-2)' : 'var(--surface)',
+                  color: 'var(--text)',
+                  cursor: 'pointer'
+                }}
+              >
+                <div style={{ fontWeight: 800 }}>{p.title}</div>
+                <div style={{ color: 'var(--muted)', fontSize: '0.8rem', marginTop: '0.25rem' }}>
+                  {new Date(p.updated_at).toLocaleString()}
+                </div>
+              </button>
+            ))}
+            {projects.length === 0 && <div style={{ color: 'var(--muted)' }}>No projects yet.</div>}
+          </div>
+        )}
+
+        <div style={{ flex: 1 }} />
+
+        {!sidebarCollapsed && (
+          <button onClick={() => router.push('/dashboard')} style={ui.buttonSecondary}>
+            Back to Dashboard
+          </button>
+        )}
+      </aside>
+
+      {/* 3-column cockpit layout */}
+      <main style={{ flex: 1, padding: '0.9rem' }}>
+        {error && (
+          <div style={{ marginBottom: '0.75rem', background: '#4f1d28', border: '1px solid var(--danger-border)', borderRadius: '8px', padding: '0.75rem' }}>
+            {error}
+          </div>
+        )}
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr 1fr', gap: '0.9rem' }}>
+          {/* Output */}
+          <section style={{ ...ui.panel, padding: '0.9rem', minHeight: '72vh' }}>
+            <div style={{ fontWeight: 900, marginBottom: '0.5rem' }}>Output</div>
+            <div style={{ color: 'var(--muted)', marginBottom: '0.75rem' }}>Project: {project?.title || projectId}</div>
+
+            <div style={{ display: 'grid', gap: '0.6rem' }}>
+              {iterations.map((it) => (
+                <div key={it.id} style={{ ...ui.panelAlt, padding: '0.6rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem' }}>
+                    <div style={{ fontWeight: 800 }}>Iteration #{it.id}</div>
+                    <div style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>{it.status}</div>
+                  </div>
+                  {it.instruction ? (
+                    <div style={{ marginTop: '0.35rem', whiteSpace: 'pre-wrap', fontSize: '0.9rem' }}>{it.instruction}</div>
+                  ) : null}
+                  <div style={{ marginTop: '0.35rem', color: 'var(--muted)', fontSize: '0.8rem' }}>{new Date(it.created_at).toLocaleString()}</div>
+                </div>
+              ))}
+              {iterations.length === 0 && <div style={{ color: 'var(--muted)' }}>No iterations yet.</div>}
+            </div>
+          </section>
+
+          {/* File viewer */}
+          <section style={{ ...ui.panel, padding: '0.9rem', minHeight: '72vh' }}>
+            <div style={{ fontWeight: 900, marginBottom: '0.5rem' }}>File Viewer</div>
+            <div style={{ color: 'var(--muted)' }}>
+              Next: upload images/builder export/code files and mark up images with highlight.
+            </div>
+          </section>
+
+          {/* Inputs */}
+          <section style={{ ...ui.panel, padding: '0.9rem', minHeight: '72vh' }}>
+            <div style={{ fontWeight: 900, marginBottom: '0.5rem' }}>Describe what you want to build (or show me)</div>
+
+            <div style={{ display: 'grid', gap: '0.65rem' }}>
+              <div>
+                <div style={{ color: 'var(--muted)', fontSize: '0.8rem', marginBottom: '0.25rem' }}>Assignment</div>
+                <select value={assignee} onChange={(e) => setAssignee(e.target.value)} style={ui.input}>
+                  {users.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.first_name || u.email || u.id}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <div style={{ color: 'var(--muted)', fontSize: '0.8rem', marginBottom: '0.25rem' }}>Build description</div>
+                <textarea
+                  value={instruction}
+                  onChange={(e) => setInstruction(e.target.value)}
+                  placeholder="Describe what to build/fix in plain English…"
+                  style={{ ...ui.input, minHeight: 140, resize: 'vertical' }}
+                />
+              </div>
+
+              <div>
+                <div style={{ color: 'var(--muted)', fontSize: '0.8rem', marginBottom: '0.25rem' }}>Collab notes</div>
+                <textarea
+                  value={collabNotes}
+                  onChange={(e) => setCollabNotes(e.target.value)}
+                  placeholder="Notes for dev collaboration / review"
+                  style={{ ...ui.input, minHeight: 90, resize: 'vertical' }}
+                />
+              </div>
+
+              <button
+                disabled={working || !canBuildFromThis}
+                onClick={() => void createIteration()}
+                style={withDisabled(ui.buttonInfo, working || !canBuildFromThis)}
+              >
+                Build from this
+              </button>
+
+              <button disabled style={withDisabled(ui.buttonSecondary, true)}>
+                Ship it (Create PR) — coming next
+              </button>
+            </div>
+          </section>
+        </div>
+      </main>
     </div>
   )
 }
