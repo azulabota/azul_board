@@ -73,6 +73,12 @@ export default function Dashboard() {
     return stored === 'cockpit' ? 'cockpit' : 'progress'
   })
 
+  const [cockpitView, setCockpitView] = useState<'v2' | 'legacy'>(() => {
+    if (typeof window === 'undefined') return 'v2'
+    const stored = window.localStorage.getItem('azul-cockpit-view')
+    return stored === 'legacy' ? 'legacy' : 'v2'
+  })
+
   const [milestones, setMilestones] = useState<Milestone[]>([])
   const [selectedMilestone, setSelectedMilestone] = useState<number | null>(null)
   const [newMilestoneTitle, setNewMilestoneTitle] = useState('')
@@ -623,17 +629,38 @@ export default function Dashboard() {
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'center', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
               <div>
                 <div style={{ fontWeight: 800 }}>Coding Cockpit</div>
-                <div style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>Legacy cockpit (threads/messages)</div>
+                <div style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>
+                  {cockpitView === 'v2' ? 'Cockpit v2 (projects + iterations)' : 'Legacy cockpit (threads/messages)'}
+                </div>
               </div>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <button onClick={() => router.push('/dashboard/cockpit-v2')} style={btnInfo}>Open Cockpit v2</button>
+
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <button
+                  onClick={() => {
+                    window.localStorage.setItem('azul-cockpit-view', 'v2')
+                    setCockpitView('v2')
+                  }}
+                  style={cockpitView === 'v2' ? btnInfo : btnSecondary}
+                >
+                  Cockpit v2
+                </button>
+                <button
+                  onClick={() => {
+                    window.localStorage.setItem('azul-cockpit-view', 'legacy')
+                    setCockpitView('legacy')
+                  }}
+                  style={cockpitView === 'legacy' ? btnInfo : btnSecondary}
+                >
+                  Legacy
+                </button>
               </div>
             </div>
+
             <div style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
               <iframe
-                src="/dashboard/cockpit"
+                src={cockpitView === 'v2' ? '/dashboard/cockpit-v2' : '/dashboard/cockpit'}
                 style={{ width: '100%', height: '74vh', border: 'none' }}
-                title="Coding Cockpit"
+                title={cockpitView === 'v2' ? 'Coding Cockpit v2' : 'Coding Cockpit'}
               />
             </div>
           </section>
