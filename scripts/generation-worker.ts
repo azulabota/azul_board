@@ -57,7 +57,6 @@ const codexModel = process.env.CODEX_MODEL || ''
 const openAiApiKey = process.env.OPENAI_API_KEY || ''
 const pollIntervalMs = Math.max(500, Number(process.env.GENERATION_WORKER_POLL_MS || 2000))
 const weeklyCleanupEnabled = (process.env.COCKPIT_WEEKLY_CLEANUP || 'true').toLowerCase() !== 'false'
-const weeklyCleanupEnabled = (process.env.COCKPIT_WEEKLY_CLEANUP || 'true').toLowerCase() !== 'false'
 
 if (!supabaseUrl || !serviceRoleKey) {
   throw new Error('Missing SUPABASE_URL (or NEXT_PUBLIC_SUPABASE_URL) and/or SUPABASE_SERVICE_ROLE_KEY')

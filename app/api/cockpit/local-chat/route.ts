@@ -39,9 +39,8 @@ export async function POST(request: NextRequest) {
 
   const { data: thread, error: threadError } = await supabase
     .from('cockpit_threads')
-    .select('id, user_id')
+    .select('id')
     .eq('id', threadId)
-    .eq('user_id', auth.userId)
     .maybeSingle()
 
   if (threadError) {
@@ -57,7 +56,6 @@ export async function POST(request: NextRequest) {
       .from('cockpit_attachments')
       .select('id')
       .eq('thread_id', threadId)
-      .eq('user_id', auth.userId)
       .in('id', selectedAttachmentIds)
 
     if (attachmentError) {
@@ -96,7 +94,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: jobError.message }, { status: 500 })
   }
 
-  await supabase.from('cockpit_threads').update({ updated_at: new Date().toISOString() }).eq('id', threadId).eq('user_id', auth.userId)
+  await supabase.from('cockpit_threads').update({ updated_at: new Date().toISOString() }).eq('id', threadId)
 
   return NextResponse.json({ ok: true, job_id: jobRow.id })
 }

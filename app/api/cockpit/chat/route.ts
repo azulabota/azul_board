@@ -52,9 +52,8 @@ export async function POST(request: NextRequest) {
 
   const { data: thread, error: threadError } = await supabase
     .from('cockpit_threads')
-    .select('id, user_id')
+    .select('id')
     .eq('id', threadId)
-    .eq('user_id', auth.userId)
     .maybeSingle()
 
   if (threadError) {
@@ -69,7 +68,6 @@ export async function POST(request: NextRequest) {
     .from('cockpit_attachments')
     .select('id, thread_id, storage_path, filename, content_type, size_bytes, expires_at')
     .eq('thread_id', threadId)
-    .eq('user_id', auth.userId)
     .in('id', selectedAttachmentIds.length ? selectedAttachmentIds : [-1])
 
   if (attachmentError) {
@@ -200,7 +198,6 @@ export async function POST(request: NextRequest) {
     .from('cockpit_threads')
     .update({ updated_at: new Date().toISOString() })
     .eq('id', threadId)
-    .eq('user_id', auth.userId)
 
   return NextResponse.json({ reply: assistantReply })
 }

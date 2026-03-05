@@ -184,6 +184,38 @@ export default function AdminPage() {
         </div>
       </section>
 
+      <section style={{ ...ui.panel, padding: '1rem', marginBottom: '1.5rem' }}>
+        <h2 style={{ marginTop: 0 }}>Developer role management</h2>
+        {users.map((user) => {
+          const isDeveloper = user.roles.includes('developer')
+          return (
+            <div key={`dev-role-${user.id}`} style={{ display: 'grid', gridTemplateColumns: '1fr auto', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0', borderBottom: '1px solid var(--border)' }}>
+              <div>
+                <div style={{ fontWeight: 600 }}>{user.first_name || user.email || 'Unknown user'}</div>
+                <div style={{ fontSize: '0.9rem', color: 'var(--muted)' }}>Roles: {user.roles.length ? user.roles.join(', ') : 'none'}</div>
+              </div>
+              {isDeveloper ? (
+                <button
+                  disabled={working === `revoke-dev-${user.id}`}
+                  onClick={() => mutate('/api/admin/roles', { userId: user.id, role: 'developer', action: 'revoke' }, `revoke-dev-${user.id}`)}
+                  style={withDisabled(ui.buttonDanger, working === `revoke-dev-${user.id}`)}
+                >
+                  Revoke developer
+                </button>
+              ) : (
+                <button
+                  disabled={working === `grant-dev-${user.id}`}
+                  onClick={() => mutate('/api/admin/roles', { userId: user.id, role: 'developer', action: 'grant' }, `grant-dev-${user.id}`)}
+                  style={withDisabled(ui.buttonInfo, working === `grant-dev-${user.id}`)}
+                >
+                  Grant developer
+                </button>
+              )}
+            </div>
+          )
+        })}
+      </section>
+
       <section style={{ ...ui.panel, padding: '1rem' }}>
         <h2 style={{ marginTop: 0 }}>Admin role management</h2>
         {users.map((user) => {
