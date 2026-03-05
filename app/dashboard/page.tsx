@@ -619,12 +619,23 @@ export default function Dashboard() {
         )}
 
         {topTab === 'cockpit' && (
-          <section style={{ ...panelStyle, padding: 0, overflow: 'hidden' }}>
-            <iframe
-              src="/dashboard/cockpit"
-              style={{ width: '100%', height: '78vh', border: 'none' }}
-              title="Coding Cockpit"
-            />
+          <section style={{ ...panelStyle, padding: '0.9rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'center', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
+              <div>
+                <div style={{ fontWeight: 800 }}>Coding Cockpit</div>
+                <div style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>Legacy cockpit (threads/messages)</div>
+              </div>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button onClick={() => router.push('/dashboard/cockpit-v2')} style={btnInfo}>Open Cockpit v2</button>
+              </div>
+            </div>
+            <div style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+              <iframe
+                src="/dashboard/cockpit"
+                style={{ width: '100%', height: '74vh', border: 'none' }}
+                title="Coding Cockpit"
+              />
+            </div>
           </section>
         )}
       </main>
